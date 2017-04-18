@@ -43,8 +43,25 @@ def load_data(ENV, SUBDIR):
       #   splitting on '\\' instead of '\' as python is interpreting
       #   the latter as an escape character, so I must escape the escape
       # if data is taken from non-windows, split would be '/'
-      filename = local_path_to_images.split('\\')[-1]
-      return driving_log_path + 'IMG/' + filename
+
+      # determine if remote_image_path is from Windows, or Non-Windows machine
+      if local_image_path.find('/')    != -1:
+        # looks like linux style path
+        split_str = '/'
+      elif local_image_path.find('\\') != -1:
+        # Note: must type '\\' in order to search on '\',
+        #   python string thinks I'm trying to escape something
+        # looks like windows style path
+        split_str = '\\'
+      else:
+        # hmm.. dunno, perhaps a filename with no path is here, else error
+        # split_string setting may thus be arbitrary
+        print("\n---remote_image_path: ", remote_image_path)
+        split_str = '/'
+
+      filename = local_path_to_images.split(split_str)[-1]
+      remote_image_path = driving_log_path + 'IMG/' + filename
+      return remote_image_path
 
     else:
       print("-----ENV='", ENV, "': incorrect flag value\n")
@@ -63,6 +80,11 @@ def load_data(ENV, SUBDIR):
     reader = csv.reader(csvfile)
     for line in reader:
       lines.append(line)
+
+    # remove header, if exists. hack: if steering_column is a string --> it is a heading
+    if isinstance(lines[0][3], str):
+      print("removing header row \n")
+      del lines[0]
 
   # for field in lines[0]:
   #   print(field)
