@@ -79,8 +79,17 @@ model.fit(X_train, y_train, shuffle=True, validation_split=0.2)
 # save model in h5 format for running in automode on simulator
 print("Saving model..")
 model_timestamp = time.strftime("%y%m%d_%H%M")
-path_to_saved_model = './trained_models/'
+path_to_saved_models = './trained_models/'
 model_filename = 'model_' + model_timestamp + '.h5'
-model.save(model_filename)
-print("Model Saved as ", model_filename)
+model.save(path_to_saved_models + model_filename)
+print("Model Saved as ", path_to_saved_models + model_filename)
 
+# to test the model locally (in anaconda)
+#     at the command command line, type:
+# python drive.py model_{path_to_saved_models}model_{model_timestamp}.h5
+# examples:
+# python drive.py model.h5
+# python drive.py ./trained_models/model_170417_1741.h5
+
+# (if using docker, see insturctions in "Running Your Network" lesson)
+#  https://classroom.udacity.com/nanodegrees/nd013/parts/fbf77062-5703-404e-b60c-95b78b2f3f9e/modules/6df7ae49-c61c-4bb2-a23e-6527e69209ec/lessons/46a70500-493e-4057-a78e-b3075933709d/concepts/1ff2cbb5-2d9e-43ad-9424-4546f502fe20
