@@ -19,32 +19,15 @@ flags = tf.app.flags
 FLAGS = flags.FLAGS
 
 # (remote is default cuz AWS costs $, thus less typing and fewer mistakes
-env_default    = 'remote'
 subdir_default = 'latest'
 
-#'remote': need to parse the absolute image paths saved in driving_log.csv
-#      for use on current machine (ie AWS)
-#'local'  (not default): use image paths as saved in driving_log.csv
-#      for use on current machine (ie AWS)
-flags.DEFINE_string('env', env_default, "env: local training machine, or remote machine")
 # name_of_directory under './data/' that has the training data to use
 flags.DEFINE_string('subdir', subdir_default, "subdir that training data is stored in, relative to ./data/")
 
-def load_data(ENV, SUBDIR):
+def load_data(SUBDIR):
 
-  def get_current_path_to_images(local_path_to_images, ENV):
+  def get_current_path_to_images(local_path_to_images):
 
-    if ENV == 'local':
-      return local_path_to_images
-
-    if ENV == 'remote':
-      # filename is last segment of full_path
-      # my data is taken from windows machine
-      #   splitting on '\\' instead of '\' as python is interpreting
-      #   the latter as an escape character, so I must escape the escape
-      # if data is taken from non-windows, split would be '/'
-
-      # determine if remote_image_path is from Windows, or Non-Windows machine
       if local_image_path.find('/')    != -1:
         # looks like linux style path
         split_str = '/'
@@ -62,14 +45,6 @@ def load_data(ENV, SUBDIR):
       filename = local_path_to_images.split(split_str)[-1]
       remote_image_path = driving_log_path + 'IMG/' + filename
       return remote_image_path
-
-    else:
-      print("-----ENV='", ENV, "': incorrect flag value\n")
-      return("")
-      # need to END program execution here.
-      assert ("ENV:" == "incorrect flag value supplied")
-      # TODO: there's a proper way to end execution on error
-
 
 
   driving_log_filename  = 'driving_log.csv'
@@ -108,7 +83,7 @@ def load_data(ENV, SUBDIR):
   for line in lines:
     # features (images)
     local_image_path = str(line[0])
-    current_image_path = get_current_path_to_images(local_image_path, ENV)
+    current_image_path = get_current_path_to_images(local_image_path)
     # load image using openCV
     image = cv2.imread(current_image_path)
     camera_1_images.append(image)
@@ -125,8 +100,8 @@ def load_data(ENV, SUBDIR):
 
 def main(_):
 
-  # print("\nFLAGS\n", FLAGS.env, FLAGS.subdir, "\n")
-  X_train, y_train = load_data(FLAGS.env, FLAGS.subdir)
+  X_train, y_train = load_data(FLAGS.subdir)
+  print('dataset shapes', X_train.shape, y_train.shape)
 
   image_input_shape = X_train.shape[1:]
   # for regression, we want a single value, ie steering angle predicted.
