@@ -52,6 +52,8 @@ def load_data(SUBDIR):
       return remote_image_path
 
 
+  ## Read Data File
+
   driving_log_filename  = 'driving_log.csv'
   driving_log_path      = './data/' + SUBDIR + '/'
 
@@ -74,16 +76,18 @@ def load_data(SUBDIR):
   # for field in lines[0]:
   #   print(field)
 
-  # gather data for features and "labels"
-  # initialize feature set containers
-  #images = []
+
+  ## Parse Data
+
+  # features (input data: images from cameras)
   camera_1_images = []
   #camera_1_images, camera_2_images, camera_3_images = [[], [], []]
+  #images = []
 
-  #initialize measurements: outputs/label sets
-  #measurements = []
+  # outputs (nn should output: steering_angles) (remaining items are optional)
   steering_angles = []    # values: (-1, 1)
   #throttle, brake, speed = [[], [], []]  # values: (0,1), (0), (0, 30)
+  #measurements = []
 
   # line: [camera1_image_path, camera2_image_path, camera3_image_path, steering_angle, throttle, brake, speed]
   for line in lines:
@@ -92,6 +96,7 @@ def load_data(SUBDIR):
     # features (images)
     local_image_path = str(line[0])
     current_image_path = get_current_path_to_images(local_image_path)
+
     # load image using openCV
     image = cv2.imread(current_image_path)
     camera_1_images.append(image)
@@ -121,19 +126,17 @@ def main(_):
   print('dataset shapes', X_train.shape, y_train.shape)
 
   image_input_shape = X_train.shape[1:]
-  # for regression, we want a single value, ie steering angle predicted.
-  # unlike classification, we do not map to a set of predefined values, or calculate probabilites for predefined class ids
   output_shape = 1
+  # for regression, we want a single value, ie steering angle predicted.
+  # unlike classification, we do not map to a set of predefined values,
+  #  or calculate probabilites for predefined class ids
 
-  # print(image_input_shape)
-  # print(output_shape)
   # define model
   model = Sequential()
   model.add(Flatten(input_shape=image_input_shape))
   model.add(Dense(output_shape))
-  # no activation on a single layer network
-  # no softmax or maxarg on regression network
-  # just the raw output value
+  # no activation on a single layer network / output layer
+  # no softmax or maxarg on regression network; just the raw output value
 
   # for regression, we use mse, no cross_entropy flavors, no softmax
   model.compile(loss='mse', optimizer='adam')
@@ -162,5 +165,5 @@ if __name__ == '__main__':
 # python drive.py model.h5
 # python drive.py ./trained_models/model_170417_1741.h5
 
-# (if using docker, see insturctions in "Running Your Network" lesson)
+# (if using docker, see instructions in "Running Your Network" lesson)
 #  https://classroom.udacity.com/nanodegrees/nd013/parts/fbf77062-5703-404e-b60c-95b78b2f3f9e/modules/6df7ae49-c61c-4bb2-a23e-6527e69209ec/lessons/46a70500-493e-4057-a78e-b3075933709d/concepts/1ff2cbb5-2d9e-43ad-9424-4546f502fe20
