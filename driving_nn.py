@@ -20,9 +20,14 @@ FLAGS = flags.FLAGS
 
 # (remote is default cuz AWS costs $, thus less typing and fewer mistakes
 subdir_default = 'latest'
+#batch_size_default = '32'#'128'  #keras default batch size is 32 ??
+epochs_default = '10'
 
 # name_of_directory under './data/' that has the training data to use
 flags.DEFINE_string('subdir', subdir_default, "subdir that training data is stored in, relative to ./data/")
+#flags.DEFINE_string('batch_size', batch_size_default, "batch size")
+flags.DEFINE_string('epochs', epochs_default, "EPOCHS")
+
 
 def load_data(SUBDIR):
 
@@ -64,6 +69,7 @@ def load_data(SUBDIR):
     except:
       print("removing header row \n")
       del lines[0]
+    print('finished reading driving_log.csv')
 
   # for field in lines[0]:
   #   print(field)
@@ -81,6 +87,8 @@ def load_data(SUBDIR):
 
   # line: [camera1_image_path, camera2_image_path, camera3_image_path, steering_angle, throttle, brake, speed]
   for line in lines:
+    #progress bar to show feedback on gathering data
+
     # features (images)
     local_image_path = str(line[0])
     current_image_path = get_current_path_to_images(local_image_path)
@@ -99,6 +107,15 @@ def load_data(SUBDIR):
   return X_train, y_train
 
 def main(_):
+  #implement simple regression network using keras
+
+  from keras.models import Sequential
+  from keras.layers.core import Dense, Flatten
+
+  EPOCHS =     int(FLAGS.epochs)
+  print("EPOCHS", EPOCHS)
+  #batch_size = int(FLAGS.batch_size)
+  #print('batch_size', batch_size)
 
   X_train, y_train = load_data(FLAGS.subdir)
   print('dataset shapes', X_train.shape, y_train.shape)
@@ -110,12 +127,7 @@ def main(_):
 
   # print(image_input_shape)
   # print(output_shape)
-
-  #implement simple regression network with keras
-  from keras.models import Sequential
-  from keras.layers.core import Dense, Flatten
-
-
+  # define model
   model = Sequential()
   model.add(Flatten(input_shape=image_input_shape))
   model.add(Dense(output_shape))
@@ -125,7 +137,7 @@ def main(_):
 
   # for regression, we use mse, no cross_entropy flavors, no softmax
   model.compile(loss='mse', optimizer='adam')
-  model.fit(X_train, y_train, shuffle=True, validation_split=0.2)
+  model.fit(X_train, y_train, shuffle=True, validation_split=0.2, nb_epoch=EPOCHS)
 
   # save model in h5 format for running in automode on simulator
   print("Saving model..")
