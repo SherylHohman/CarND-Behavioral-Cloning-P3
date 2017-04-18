@@ -8,6 +8,7 @@
 import csv
 import cv2
 import numpy as np
+import time
 
 # TODO: add flags so can input custom driving_log_path, in case save several versions
 driving_log_filename = 'driving_log.csv'
@@ -51,6 +52,35 @@ for line in lines:
 X_train = np.array(camera_1_images)
 y_train = np.array(steering_angles[:])
 
-print(X_train.shape)
-print(y_train.shape)
+image_input_shape = X_train.shape[1:]
+# for regression, we want a single value, ie steering angle predicted.
+# unlike classification, we do not map to a set of predefined values, or calculate probabilites for predefined class ids
+output_shape = 1
+
+print(image_input_shape)
+print(output_shape)
+
+#implement simple regression network with keras
+from keras.models import Sequential
+from keras.layers.core import Dense, Flatten
+
+
+model = Sequential()
+model.add(Flatten(input_shape=image_input_shape))
+model.add(Dense(output_shape))
+# no activation on a single layer network
+# no softmax or maxarg on regression network
+# just the raw output value
+
+# for regression, we use mse, no cross_entropy flavors, no softmax
+model.compile(loss='mse', optimizer='adam')
+model.fit(X_train, y_train, shuffle=True, validation_split=0.2)
+
+# save model in h5 format for running in automode on simulator
+print("Saving model..")
+model_timestamp = time.strftime("%y%m%d_%H%M")
+path_to_saved_model = './trained_models/'
+model_filename = 'model_' + model_timestamp + '.h5'
+model.save(model_filename)
+print("Model Saved as ", model_filename)
 
