@@ -13,6 +13,8 @@ import numpy as np
 import time
 # for command line flags
 import tensorflow as tf
+# for progress bar
+import sys
 
 # command line flags
 flags = tf.app.flags
@@ -69,9 +71,9 @@ def load_data(SUBDIR):
     try:
       float(possible_steering_angle)
     except:
-      print("removing header row \n")
+      print("removing header row")
       del lines[0]
-    print('finished reading driving_log.csv')
+    print('finished reading driving_log.csv\n')
 
   # for field in lines[0]:
   #   print(field)
@@ -89,9 +91,28 @@ def load_data(SUBDIR):
   #throttle, brake, speed = [[], [], []]  # values: (0,1), (0), (0, 30)
   #measurements = []
 
-  # line: [camera1_image_path, camera2_image_path, camera3_image_path, steering_angle, throttle, brake, speed]
-  for line in lines:
-    #progress bar to show feedback on gathering data
+
+  print('parsing data')
+  for i, line in enumerate(lines):
+
+    # progress bar to show feedback on data parsing
+    # def update_progress(i):
+    barLength = 30 # Modify this to change the length of the progress bar
+    progress = float(i/len(lines))
+    if i == len(lines)-1:
+        progress = 1
+    block = int(round(barLength*progress))
+    #padding = " "*10
+    text = "\r          [{}] {}%".format("="*block + "."*(barLength-block), int(progress*100))
+    sys.stdout.write(text)
+    sys.stdout.flush()
+
+    # sys.stdout.write('\r')
+    # sys.stdout.write("%-20s] %d%%" % ('='*i, 5*i))
+    # sys.stdout.flush()
+
+    # data stored in each line:
+    # line: [center_camera_image_path, L_camera_image_path, R_camera_image_path, steering_angle, throttle, brake, speed]
 
     # features (images)
     local_image_path = str(line[0])
@@ -105,6 +126,9 @@ def load_data(SUBDIR):
     steering_angle = float(line[3])
     steering_angles.append(steering_angle)
 
+  # end of parsing data
+  print()
+
   # convert to numpy arrays, and save as train and "label" datasets
   X_train = np.asarray(camera_1_images)
   y_train = np.asarray(steering_angles[:])
@@ -117,13 +141,17 @@ def main(_):
   from keras.models import Sequential
   from keras.layers.core import Dense, Flatten
 
+  print('\nflag values:')
   EPOCHS =     int(FLAGS.epochs)
-  print("EPOCHS", EPOCHS)
+  print(EPOCHS, "EPOCHS")
+  subdir = FLAGS.subdir
+  print(subdir, ": subdir of './data/' that training data resides in")
   #batch_size = int(FLAGS.batch_size)
   #print('batch_size', batch_size)
+  print()
 
   X_train, y_train = load_data(FLAGS.subdir)
-  print('dataset shapes', X_train.shape, y_train.shape)
+  print('dataset shapes', X_train.shape, y_train.shape, "\n")
 
   image_input_shape = X_train.shape[1:]
   output_shape = 1
