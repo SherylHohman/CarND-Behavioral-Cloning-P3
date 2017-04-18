@@ -1,3 +1,4 @@
 *.zip
 data
 windows-driving-simulator
+trained_models
