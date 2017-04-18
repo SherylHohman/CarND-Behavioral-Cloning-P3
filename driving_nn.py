@@ -8,44 +8,55 @@
 import csv
 # read image
 import cv2
+import numpy as np
+# for time_stamping the saved model's filename
+import time
 # for command line flags
 import tensorflow as tf
-import numpy as np
-import time
 
 # command line flags
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 
 # (remote is default cuz AWS costs $, thus less typing and fewer mistakes
-env_default    = "remote"
-subdir_default = "latest"
+env_default    = 'remote'
+subdir_default = 'latest'
 
 #'remote': need to parse the absolute image paths saved in driving_log.csv
 #      for use on current machine (ie AWS)
 #'local'  (not default): use image paths as saved in driving_log.csv
 #      for use on current machine (ie AWS)
-flags.DEFINE_string("env", env_default, "reading from 'local' machine (where images were saved) or 'remote' machine (must parse path to images) ?")
+flags.DEFINE_string('env', env_default, "env: local training machine, or remote machine")
 # name_of_directory under './data/' that has the training data to use
-flags.DEFINE_string("subdir", subdir_default, 'subdir that training data is stored in, relative to ./data/')
+flags.DEFINE_string('subdir', subdir_default, "subdir that training data is stored in, relative to ./data/")
 
-def main(_):
-  def get_current_path_to_images(local_path_to_images, env):
-    if env == 'local':
+def load_data(ENV, SUBDIR):
+
+  def get_current_path_to_images(local_path_to_images, ENV):
+
+    if ENV == 'local':
       return local_path_to_images
-    if env == 'remote':
+
+    if ENV == 'remote':
       # filename is last segment of full_path
-      filename = local_path_to_images.split('/')[-1]
-      return remote_driving_log_path + '/IMG/' + filename
+      # my data is taken from windows machine
+      #   splitting on '\\' instead of '\' as python is interpreting
+      #   the latter as an escape character, so I must escape the escape
+      # if data is taken from non-windows, split would be '/'
+      filename = local_path_to_images.split('\\')[-1]
+      return driving_log_path + 'IMG/' + filename
+
     else:
-      print("incorrect flag value supplied")
+      print("-----ENV='", ENV, "': incorrect flag value\n")
+      return("")
       # need to END program execution here.
-      assert ("env:" == "incorrect flag value supplied")
+      assert ("ENV:" == "incorrect flag value supplied")
       # TODO: there's a proper way to end execution on error
 
 
+
   driving_log_filename  = 'driving_log.csv'
-  driving_log_path      = './data/' + FLAGS.subdir + '/'
+  driving_log_path      = './data/' + SUBDIR + '/'
 
   lines = []
   with open(driving_log_path + driving_log_filename) as csvfile:
@@ -53,9 +64,8 @@ def main(_):
     for line in reader:
       lines.append(line)
 
-  print(lines[0], '\n')
-  for field in lines[0]:
-    print(field)
+  # for field in lines[0]:
+  #   print(field)
 
   # gather data for features and "labels"
   # initialize feature set containers
@@ -72,7 +82,7 @@ def main(_):
   for line in lines:
     # features (images)
     local_image_path = str(line[0])
-    current_image_path = get_current_path_to_images(local_image_path, FLAGS.env)
+    current_image_path = get_current_path_to_images(local_image_path, ENV)
     # load image using openCV
     image = cv2.imread(current_image_path)
     camera_1_images.append(image)
@@ -82,16 +92,23 @@ def main(_):
     steering_angles.append(steering_angle)
 
   # convert to numpy arrays, and save as train and "label" datasets
-  X_train = np.array(camera_1_images)
-  y_train = np.array(steering_angles[:])
+  X_train = np.asarray(camera_1_images)
+  y_train = np.asarray(steering_angles[:])
+
+  return X_train, y_train
+
+def main(_):
+
+  # print("\nFLAGS\n", FLAGS.env, FLAGS.subdir, "\n")
+  X_train, y_train = load_data(FLAGS.env, FLAGS.subdir)
 
   image_input_shape = X_train.shape[1:]
   # for regression, we want a single value, ie steering angle predicted.
   # unlike classification, we do not map to a set of predefined values, or calculate probabilites for predefined class ids
   output_shape = 1
 
-  print(image_input_shape)
-  print(output_shape)
+  # print(image_input_shape)
+  # print(output_shape)
 
   #implement simple regression network with keras
   from keras.models import Sequential
