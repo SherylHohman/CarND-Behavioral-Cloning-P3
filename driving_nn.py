@@ -81,8 +81,12 @@ def load_data(ENV, SUBDIR):
     for line in reader:
       lines.append(line)
 
-    # remove header, if exists. hack: if steering_column is a string --> it is a heading
-    if isinstance(lines[0][3], str):
+    # remove header, if exists. Note: all columns are currently strings
+    # if steering_column cannot be cast to a number --> it is a heading
+    possible_steering_angle = lines[0][3]
+    try:
+      float(possible_steering_angle)
+    except:
       print("removing header row \n")
       del lines[0]
 
