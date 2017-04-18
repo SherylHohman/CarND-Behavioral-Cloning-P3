@@ -6,83 +6,124 @@
 
 # Read data from CSV file
 import csv
+# read image
 import cv2
+# for command line flags
+import tensorflow as tf
 import numpy as np
 import time
 
-# TODO: add flags so can input custom driving_log_path, in case save several versions
-driving_log_filename = 'driving_log.csv'
-driving_log_path = './data/latest_training_data/'
+# command line flags
+flags = tf.app.flags
+FLAGS = flags.FLAGS
 
-lines = []
-with open(driving_log_path + driving_log_filename) as csvfile:
-  reader = csv.reader(csvfile)
-  for line in reader:
-    lines.append(line)
+# (remote is default cuz AWS costs $, thus less typing and fewer mistakes
+env_default    = "remote"
+subdir_default = "latest"
 
-print(lines[0], '\n')
-for field in lines[0]:
-  print(field)
+#'remote': need to parse the absolute image paths saved in driving_log.csv
+#      for use on current machine (ie AWS)
+#'local'  (not default): use image paths as saved in driving_log.csv
+#      for use on current machine (ie AWS)
+flags.DEFINE_string("env", env_default, "reading from 'local' machine (where images were saved) or 'remote' machine (must parse path to images) ?")
+# name_of_directory under './data/' that has the training data to use
+flags.DEFINE_string("subdir", subdir_default, 'subdir that training data is stored in, relative to ./data/')
 
-# separate lines of data into types of data ?? dunno how to say this
-# gather features and "labels"
-# initialize feature set
-#images = []
-camera_1_images = []
-#camera_1_images, camera_2_images, camera_3_images = [[], [], []]
-
-#initialize measurements: outputs/label sets
-#measurements = []
-steering_angles = []    # values: (-1, 1)
-#throttle, brake, speed = [[], [], []]  # values: (0,1), (0), (0, 30)
-
-# line: [camera1_image_path, camera2_image_path, camera3_image_path, steering_angle, throttle, brake, speed]
-for line in lines:
-  # features (images)
-  image_path = str(line[0])
-  # load image using openCV
-  image = cv2.imread(image_path)
-  camera_1_images.append(image)
-
-  # "labels" (measurements)
-  steering_angle = float(line[3])
-  steering_angles.append(steering_angle)
-
-# convert to numpy arrays, and save as train and "label" datasets
-X_train = np.array(camera_1_images)
-y_train = np.array(steering_angles[:])
-
-image_input_shape = X_train.shape[1:]
-# for regression, we want a single value, ie steering angle predicted.
-# unlike classification, we do not map to a set of predefined values, or calculate probabilites for predefined class ids
-output_shape = 1
-
-print(image_input_shape)
-print(output_shape)
-
-#implement simple regression network with keras
-from keras.models import Sequential
-from keras.layers.core import Dense, Flatten
+def main(_):
+  def get_current_path_to_images(local_path_to_images, env):
+    if env == 'local':
+      return local_path_to_images
+    if env == 'remote':
+      # filename is last segment of full_path
+      filename = local_path_to_images.split('/')[-1]
+      return remote_driving_log_path + '/IMG/' + filename
+    else:
+      print("incorrect flag value supplied")
+      # need to END program execution here.
+      assert ("env:" == "incorrect flag value supplied")
+      # TODO: there's a proper way to end execution on error
 
 
-model = Sequential()
-model.add(Flatten(input_shape=image_input_shape))
-model.add(Dense(output_shape))
-# no activation on a single layer network
-# no softmax or maxarg on regression network
-# just the raw output value
+  driving_log_filename  = 'driving_log.csv'
+  driving_log_path      = './data/' + FLAGS.subdir + '/'
 
-# for regression, we use mse, no cross_entropy flavors, no softmax
-model.compile(loss='mse', optimizer='adam')
-model.fit(X_train, y_train, shuffle=True, validation_split=0.2)
+  lines = []
+  with open(driving_log_path + driving_log_filename) as csvfile:
+    reader = csv.reader(csvfile)
+    for line in reader:
+      lines.append(line)
 
-# save model in h5 format for running in automode on simulator
-print("Saving model..")
-model_timestamp = time.strftime("%y%m%d_%H%M")
-path_to_saved_models = './trained_models/'
-model_filename = 'model_' + model_timestamp + '.h5'
-model.save(path_to_saved_models + model_filename)
-print("Model Saved as ", path_to_saved_models + model_filename)
+  print(lines[0], '\n')
+  for field in lines[0]:
+    print(field)
+
+  # gather data for features and "labels"
+  # initialize feature set containers
+  #images = []
+  camera_1_images = []
+  #camera_1_images, camera_2_images, camera_3_images = [[], [], []]
+
+  #initialize measurements: outputs/label sets
+  #measurements = []
+  steering_angles = []    # values: (-1, 1)
+  #throttle, brake, speed = [[], [], []]  # values: (0,1), (0), (0, 30)
+
+  # line: [camera1_image_path, camera2_image_path, camera3_image_path, steering_angle, throttle, brake, speed]
+  for line in lines:
+    # features (images)
+    local_image_path = str(line[0])
+    current_image_path = get_current_path_to_images(local_image_path, FLAGS.env)
+    # load image using openCV
+    image = cv2.imread(current_image_path)
+    camera_1_images.append(image)
+
+    # "labels" (measurements)
+    steering_angle = float(line[3])
+    steering_angles.append(steering_angle)
+
+  # convert to numpy arrays, and save as train and "label" datasets
+  X_train = np.array(camera_1_images)
+  y_train = np.array(steering_angles[:])
+
+  image_input_shape = X_train.shape[1:]
+  # for regression, we want a single value, ie steering angle predicted.
+  # unlike classification, we do not map to a set of predefined values, or calculate probabilites for predefined class ids
+  output_shape = 1
+
+  print(image_input_shape)
+  print(output_shape)
+
+  #implement simple regression network with keras
+  from keras.models import Sequential
+  from keras.layers.core import Dense, Flatten
+
+
+  model = Sequential()
+  model.add(Flatten(input_shape=image_input_shape))
+  model.add(Dense(output_shape))
+  # no activation on a single layer network
+  # no softmax or maxarg on regression network
+  # just the raw output value
+
+  # for regression, we use mse, no cross_entropy flavors, no softmax
+  model.compile(loss='mse', optimizer='adam')
+  model.fit(X_train, y_train, shuffle=True, validation_split=0.2)
+
+  # save model in h5 format for running in automode on simulator
+  print("Saving model..")
+  model_timestamp = time.strftime("%y%m%d_%H%M")
+  path_to_saved_models = './trained_models/'
+  model_filename = 'model_' + model_timestamp + '.h5'
+  model.save(path_to_saved_models + model_filename)
+  print("Model Saved as ", path_to_saved_models + model_filename)
+
+
+# parses flags and calls the `main` function above
+if __name__ == '__main__':
+    tf.app.run()
+
+
+
 
 # to test the model locally (in anaconda)
 #     at the command command line, type:
