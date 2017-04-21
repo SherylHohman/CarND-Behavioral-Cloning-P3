@@ -135,7 +135,9 @@ def main(_):
   #implement simple regression network using keras
 
   from keras.models import Sequential
-  from keras.layers.core import Dense, Flatten
+  from keras.layers.core import Dense, Activation, Flatten
+  from keras.layers.convolutional import Convolution2D
+
 
   print('\nflag values:')
   EPOCHS = int(FLAGS.epochs)
@@ -155,7 +157,13 @@ def main(_):
   # unlike classification, we do not map to a set of predefined values,
   #  or calculate probabilites for predefined class ids
 
-  # define model
+  # define model - use NVIDIA model from Apr 2016 publication
+  #  RGB -> YUV image transformation
+  # 1 normalization (fixed)               # (66,200,3)
+  # 3 conv layers: 2x2 stride, 5x5 kernal # (66,200,3)->(31,98,24)->(14,47,36)->(5,22,48)
+  # 2 conv layers: no  stride, 3x3 kernal # ( 5,22,48)->( 3,20,64)->( 1,18,64)
+  # - Flatten                             # ( 1,18,64)->(1164)
+  # 3 fully connected layers              #(1164) -> (100) -> (50) -> (10) -> (1)
   model = Sequential()
   model.add(Flatten(input_shape=image_input_shape))
   # add convolutional layers + activation, + maxpooling
