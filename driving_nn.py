@@ -151,27 +151,43 @@ def main(_):
   X_train, y_train = load_data(FLAGS.subdir)
   print('dataset shapes', X_train.shape, y_train.shape, "\n")
 
+  # PreProcess:
+  # change RGB to YUV
+
+  # Normalize
+  
+  # Crop: hood of car; some amount above the horizon
+  # Data Augmentation (apply during training)
+
   image_input_shape = X_train.shape[1:]
   output_shape = 1
   # for regression, we want a single value, ie steering angle predicted.
   # unlike classification, we do not map to a set of predefined values,
   #  or calculate probabilites for predefined class ids
 
-  # define model - use NVIDIA model from Apr 2016 publication
+  # define model - use NVIDIA model from 25Apr2016 publication
+  # http://images.nvidia.com/content/tegra/automotive/images/2016/solutions/pdf/end-to-end-dl-using-px.pdf
   #  RGB -> YUV image transformation
   # 1 normalization (fixed)               # (66,200,3)
   # 3 conv layers: 2x2 stride, 5x5 kernal # (66,200,3)->(31,98,24)->(14,47,36)->(5,22,48)
   # 2 conv layers: no  stride, 3x3 kernal # ( 5,22,48)->( 3,20,64)->( 1,18,64)
   # - Flatten                             # ( 1,18,64)->(1164)
-  # 3 fully connected layers              #(1164) -> (100) -> (50) -> (10) -> (1)
+  # 3 fully connected layers              #(1164) -> (100) -> (50) -> (10) -> (1) ?? too many!!
   model = Sequential()
   model.add(Flatten(input_shape=image_input_shape))
-  # add convolutional layers + activation, + maxpooling
-  # add more Dense layers + activation
-  #model.add(Activation('relu'))
+  # maxpooling ??
+  # curious: what about using Convolution3D: as these images are sequential - video
+  # guess steering angles recorded are absolute though, not differential from the prev frame.. so perhaps 3D would not work so well?
+  model.add(Convolution2D(kernal_size=5, stride=2, activation='relu')
+  model.add(Convolution2D(kernal_size=5, stride=2, activation='relu'))
+  model.add(Convolution2D(kernal_size=5, stride=2, activation='relu'))
+  model.add(Convolution2D(kernal_size=3, activation='relu'))
+  model.add(Convolution2D(kernal_size=3, activation='relu'))
+  model.add(Flatten())
+  model.add(Dense(100))  #?? 1 too many dense layers ?
+  model.add(Dense(50))
+  model.add(Dense(10))
   model.add(Dense(output_shape))
-  model.add()
-  # no activation on a single layer network / output layer
   # no softmax or maxarg on regression network; just the raw output value
 
   # for regression: use mse. no cross_entropy, no softmax
