@@ -20,15 +20,14 @@ import sys
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 
-# (remote is default cuz AWS costs $, thus less typing and fewer mistakes
 subdir_default = 'latest'
-#batch_size_default = '32'#'128'  #keras default batch size is 32 ??
 epochs_default = '10'
+#batch_size_default = '32'#'128'  # is keras default batch size==32 ??
 
 # name_of_directory under './data/' that has the training data to use
 flags.DEFINE_string('subdir', subdir_default, "subdir that training data is stored in, relative to ./data/")
-#flags.DEFINE_string('batch_size', batch_size_default, "batch size")
 flags.DEFINE_string('epochs', epochs_default, "EPOCHS")
+#flags.DEFINE_string('batch_size', batch_size_default, "batch size")
 
 
 def load_data(SUBDIR):
@@ -36,15 +35,15 @@ def load_data(SUBDIR):
   def get_current_path_to_images(local_path_to_images):
 
       if local_image_path.find('/')    != -1:
-        # looks like linux style path
+        # likely a linux style path
         split_str = '/'
       elif local_image_path.find('\\') != -1:
         # Note: must type '\\' in order to search on '\',
-        #   python string thinks I'm trying to escape something
-        # looks like windows style path
+        #   python string thinks I'm trying to escape the second quotation mark
+        # likely a windows style path
         split_str = '\\'
       else:
-        # hmm.. dunno, perhaps a filename with no path is here, else error
+        # hmm.. dunno; perhaps a filename with no path; else an unknown error
         # split_string setting may thus be arbitrary
         print("\n---remote_image_path: ", remote_image_path)
         split_str = '/'
@@ -107,9 +106,6 @@ def load_data(SUBDIR):
     sys.stdout.write(text)
     sys.stdout.flush()
 
-    # sys.stdout.write('\r')
-    # sys.stdout.write("%-20s] %d%%" % ('='*i, 5*i))
-    # sys.stdout.flush()
 
     # data stored in each line:
     # line: [center_camera_image_path, L_camera_image_path, R_camera_image_path, steering_angle, throttle, brake, speed]
@@ -131,7 +127,7 @@ def load_data(SUBDIR):
 
   # convert to numpy arrays, and save as train and "label" datasets
   X_train = np.asarray(camera_1_images)
-  y_train = np.asarray(steering_angles[:])
+  y_train = np.asarray(steering_angles)
 
   return X_train, y_train
 
@@ -142,7 +138,7 @@ def main(_):
   from keras.layers.core import Dense, Flatten
 
   print('\nflag values:')
-  EPOCHS =     int(FLAGS.epochs)
+  EPOCHS = int(FLAGS.epochs)
   print(EPOCHS, "EPOCHS")
   subdir = FLAGS.subdir
   print(subdir, ": subdir of './data/' that training data resides in")
@@ -162,11 +158,15 @@ def main(_):
   # define model
   model = Sequential()
   model.add(Flatten(input_shape=image_input_shape))
+  # add convolutional layers + activation, + maxpooling
+  # add more Dense layers + activation
+  #model.add(Activation('relu'))
   model.add(Dense(output_shape))
+  model.add()
   # no activation on a single layer network / output layer
   # no softmax or maxarg on regression network; just the raw output value
 
-  # for regression, we use mse, no cross_entropy flavors, no softmax
+  # for regression: use mse. no cross_entropy, no softmax
   model.compile(loss='mse', optimizer='adam')
   model.fit(X_train, y_train, shuffle=True, validation_split=0.2, nb_epoch=EPOCHS)
 
@@ -185,7 +185,6 @@ if __name__ == '__main__':
 
 
 
-
 # to test the model locally (in anaconda)
 #     at the command command line, type:
 # python drive.py model_{path_to_saved_models}model_{model_timestamp}.h5
@@ -193,5 +192,4 @@ if __name__ == '__main__':
 # python drive.py model.h5
 # python drive.py ./trained_models/model_170417_1741.h5
 
-# (if using docker, see instructions in "Running Your Network" lesson)
-#  https://classroom.udacity.com/nanodegrees/nd013/parts/fbf77062-5703-404e-b60c-95b78b2f3f9e/modules/6df7ae49-c61c-4bb2-a23e-6527e69209ec/lessons/46a70500-493e-4057-a78e-b3075933709d/concepts/1ff2cbb5-2d9e-43ad-9424-4546f502fe20
+# (if using docker, see instructions in "8 Running Your Network" lesson)
