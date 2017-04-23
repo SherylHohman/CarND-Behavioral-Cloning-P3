@@ -162,7 +162,6 @@ def preprocess(X_train, y_train):
 
 
 def main(_):
-  # implement simple regression network using keras
 
   from keras.models import Sequential
   from keras.layers.core import Dense, Activation, Flatten
@@ -188,77 +187,63 @@ def main(_):
   print("Done Preprocessing.")
 
 
-  image_input_shape = X_train.shape[1:]
   # for regression, we want a single value, ie steering angle predicted.
+  image_input_shape = X_train.shape[1:]
   output_shape = 1
 
 
   ## Define Model
-
-  image_input_shape = X_train.shape[1:]
-  # for regression, we want a single value, ie steering angle predicted.
-  output_shape = 1
-
 
   model = Sequential()
 
   # 3 conv layers with kernal 5, stride 2, relu activation
   filter_size = 5
   strides = (2,2)
+  num_output_filters = image_input_shape[-1]  # 3
+  conv_params = {'nb_filter': num_output_filters,
+                 'nb_row': filter_size,
+                 'nb_col': filter_size,
+                 'subsample': strides,
+                 'activation': 'relu',
+                 'input_shape': image_input_shape
+                }
 
   # (66,200,3)->(31,98,24)
-  output_filters = 24
+  conv_params['nb_filter'] = num_output_filters = 24
+  model.add(Convolution2D(**conv_params))
   #model.add(Convolution2D(input_shape=image_input_shape, stride=2, activation='relu'))
-  model.add(Convolution2D(nb_filter=output_filters,
-                          nb_row=filter_size,
-                          nb_col=filter_size,
-                          subsample=strides,
-                          activation='relu',
-                          input_shape=image_input_shape
-                         ))
-  #  (31,98,24)->(14,47,36)
-  output_filters = 36
-  model.add(Convolution2D(nb_filter=output_filters,
-                          nb_row=filter_size,
-                          nb_col=filter_size,
-                          subsample=strides,
-                          activation='relu'))
-  #  (14,47,36)->(5,22,48)
-  output_filters = 48
-  model.add(Convolution2D(nb_filter=output_filters,
-                          nb_row=filter_size,
-                          nb_col=filter_size,
-                          subsample=strides,
-                          activation='relu'))
+  # input_shape is only ever passed in to the first layer
+  del conv_params['input_shape']
 
+  # #  (31,98,24)->(14,47,36)
+  conv_params['nb_filter'] = num_output_filters = 36
+  model.add(Convolution2D(**conv_params))
+
+  # #  (14,47,36)->(5,22,48)
+  conv_params['nb_filter'] = num_output_filters = 48
+  model.add(Convolution2D(**conv_params))
 
   # 2 conv layers with kernal 3, stride none (1), relu activation
   filter_size = 3
   strides = (1,1)
-
+  num_output_filters = 64
+  conv_params['nb_row'] = filter_size
+  conv_params['nb_col'] = filter_size
+  conv_params['subsample'] = strides
+  conv_params['nb_filter'] = num_output_filters
   # ( 5,22,48)->( 3,20,64)
-  output_filters = 64
-  model.add(Convolution2D(nb_filter=output_filters,
-                          nb_row=filter_size,
-                          nb_col=filter_size,
-                          subsample=strides,
-                          activation='relu'))
+  model.add(Convolution2D(**conv_params))
   #  ( 3,20,64)->( 1,18,64)
-  output_filters = 64
-  model.add(Convolution2D(nb_filter=output_filters,
-                          nb_row=filter_size,
-                          nb_col=filter_size,
-                          subsample=strides,
-                          activation='relu'))
+  model.add(Convolution2D(**conv_params))
 
   #  ( 1,18,64)->(1164)
   model.add(Flatten())
 
   # 3 fully connected layers
   #  (1164) -> (100)
-  model.add(Dense(100))  #?? 1 too many dense layers ?
+  model.add(Dense(100))
   model.add(Dense(50))
-  #model.add(Dense(10))
+  #model.add(Dense(10))  #?? 1 too many dense layers ?
   model.add(Dense(1))
   # no softmax or maxarg on regression network; just the raw output value
 
