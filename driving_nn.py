@@ -21,6 +21,7 @@ flags = tf.app.flags
 FLAGS = flags.FLAGS
 
 subdir_default = 'latest'
+#subdir_default = 'sample_training_data'
 epochs_default = '10'
 #batch_size_default = '32'#'128'  # is keras default batch size==32 ??
 
@@ -131,6 +132,35 @@ def load_data(SUBDIR):
 
   return X_train, y_train
 
+def preprocess(X_train, y_train):
+  # PreProcess:
+  # change RGB to YUV
+  print("converting to YUV..")
+  for image in X_train:
+    # our cv2 images are actually BGR, not RGB
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2YUV)
+
+  print("Normalizing")
+  # Normalize, zero-center (-1,1) could instead do a MinMax thing
+  X_train_shape = X_train.shape
+  print(X_train.shape)
+  print(X_train[0][0][0], ':X_train[0][0][0] :before')
+  X_pixels = X_train.flatten()
+  print(X_pixels.shape, ":X_pixels shape")
+
+  X_pixels = (X_pixels - 128.0)/277.0
+
+  X_train = X_pixels.reshape(X_train_shape)
+  print(X_train.shape)
+  print(X_train[0][0][0], ':X_train[0][0][0] :after')
+
+  # Crop: hood of car; some amount above the horizon
+  #print("Cropping..")
+  # Data Augmentation (apply during training)
+
+  return(X_train, y_train)
+
+
 def main(_):
   # implement simple regression network using keras
 
@@ -138,35 +168,25 @@ def main(_):
   from keras.layers.core import Dense, Activation, Flatten
   from keras.layers.convolutional import Convolution2D
 
-
+  # get flag values from command line (or defaults)
   print('\nflag values:')
   EPOCHS = int(FLAGS.epochs)
   print(EPOCHS, "EPOCHS")
-  subdir = FLAGS.subdir
-  print(subdir, ": subdir of './data/' that training data resides in")
+  SUBDIR = FLAGS.subdir
+  print(SUBDIR, ": subdir of './data/' that training data resides in")
   #batch_size = int(FLAGS.batch_size)
   #print('batch_size', batch_size)
   print()
 
-  X_train, y_train = load_data(FLAGS.subdir)
-  print('dataset shapes', X_train.shape, y_train.shape, "\n")
+  # load raw data
+  X_train_ORIG, y_train_ORIG = load_data(SUBDIR)
+  print('dataset shapes', X_train_ORIG.shape, y_train_ORIG.shape, "\n")
 
-  # PreProcess:
-  # change RGB to YUV
-  for image in X_train:
-    # our cv2 images are actually BGR, not RGB
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2YUV)
+  # Pre-Process the Data
+  print('preprocessing..')
+  X_train, y_train = preprocess(X_train_ORIG, y_train_ORIG)
+  print("Done Preprocessing.")
 
-  # Normalize, zero-center (-1,1) 9could instead do a MinMax thing
-  X_train_shape = X_train.shape
-  X_train.Flatten()
-  for pixel in X_train:
-    pixel = float(pixel)/255.0 - 128.0
-  X_train.reshape(X_train_shape)
-  print(X_train[0])
-
-  # Crop: hood of car; some amount above the horizon
-  # Data Augmentation (apply during training)
 
   image_input_shape = X_train.shape[1:]
   # for regression, we want a single value, ie steering angle predicted.
@@ -174,49 +194,85 @@ def main(_):
 
 
   ## Define Model
-  #  based on NVIDIA model from 25Apr2016 publication
-  #  http://images.nvidia.com/content/tegra/automotive/images/2016/solutions/pdf/end-to-end-dl-using-px.pdf
-  #  RGB -> YUV image transformation
-  # 1 normalization (fixed)               # (66,200,3)
-  # 3 conv layers: 2x2 stride, 5x5 kernal # (66,200,3)->(31,98,24)->(14,47,36)->(5,22,48)
-  # 2 conv layers: no  stride, 3x3 kernal # ( 5,22,48)->( 3,20,64)->( 1,18,64)
-  # - Flatten                             # ( 1,18,64)->(1164)
-  # 3 fully connected layers              #(1164) -> (100) -> (50) -> (10) -> (1) ?? too many!!
 
-  # initializer = keras.initializers.TruncatedNormal(mean=0, stddev=0.5, seed=42)
-  # stddev=sqrt(2/(num_input+num_out)
-  # glorot_normal(seed=42)
+  image_input_shape = X_train.shape[1:]
+  # for regression, we want a single value, ie steering angle predicted.
+  output_shape = 1
+
 
   model = Sequential()
-  # maxpooling ??
+
+  # 3 conv layers with kernal 5, stride 2, relu activation
+  filter_size = 5
+  strides = (2,2)
+
   # (66,200,3)->(31,98,24)
-  model.add(Convolution2D(input_shape=image_input_shape), kernal_size=5, stride=2, activation='relu')
-  # (31,98,24)->(14,47,36)
-  model.add(Convolution2D(kernal_size=5, stride=2, activation='relu'))
-  # (14,47,36)->(5,22,48)
-  model.add(Convolution2D(kernal_size=5, stride=2, activation='relu'))
+  output_filters = 24
+  #model.add(Convolution2D(input_shape=image_input_shape, stride=2, activation='relu'))
+  model.add(Convolution2D(nb_filter=output_filters,
+                          nb_row=filter_size,
+                          nb_col=filter_size,
+                          subsample=strides,
+                          activation='relu',
+                          input_shape=image_input_shape
+                         ))
+  #  (31,98,24)->(14,47,36)
+  output_filters = 36
+  model.add(Convolution2D(nb_filter=output_filters,
+                          nb_row=filter_size,
+                          nb_col=filter_size,
+                          subsample=strides,
+                          activation='relu'))
+  #  (14,47,36)->(5,22,48)
+  output_filters = 48
+  model.add(Convolution2D(nb_filter=output_filters,
+                          nb_row=filter_size,
+                          nb_col=filter_size,
+                          subsample=strides,
+                          activation='relu'))
+
+
+  # 2 conv layers with kernal 3, stride none (1), relu activation
+  filter_size = 3
+  strides = (1,1)
+
   # ( 5,22,48)->( 3,20,64)
-  model.add(Convolution2D(kernal_size=3, activation='relu'))
-  # ( 3,20,64)->( 1,18,64)
-  model.add(Convolution2D(kernal_size=3, activation='relu'))
-  # ( 1,18,64)->(1164)
+  output_filters = 64
+  model.add(Convolution2D(nb_filter=output_filters,
+                          nb_row=filter_size,
+                          nb_col=filter_size,
+                          subsample=strides,
+                          activation='relu'))
+  #  ( 3,20,64)->( 1,18,64)
+  output_filters = 64
+  model.add(Convolution2D(nb_filter=output_filters,
+                          nb_row=filter_size,
+                          nb_col=filter_size,
+                          subsample=strides,
+                          activation='relu'))
+
+  #  ( 1,18,64)->(1164)
   model.add(Flatten())
-  # (1164) -> (100)
+
+  # 3 fully connected layers
+  #  (1164) -> (100)
   model.add(Dense(100))  #?? 1 too many dense layers ?
   model.add(Dense(50))
   #model.add(Dense(10))
-  model.add(Dense(output_shape))
+  model.add(Dense(1))
   # no softmax or maxarg on regression network; just the raw output value
 
+  ## TRAIN Model
+  print("Training Model..")
   # for regression: use mse. no cross_entropy, no softmax
   model.compile(loss='mse', optimizer='adam')
   model.fit(X_train, y_train, shuffle=True, validation_split=0.2, nb_epoch=EPOCHS)
 
-  # save model in h5 format for running in automode on simulator
+  ## SAVE model: h5 format for running in autonomous mode on simulator
   print("Saving model..")
   model_timestamp = time.strftime("%y%m%d_%H%M")
   path_to_saved_models = './trained_models/'
-  model_filename = 'model_' + model_timestamp + '.h5'
+  model_filename = 'model_' + model_timestamp + '_' + SUBDIR +'.h5'
   model.save(path_to_saved_models + model_filename)
   print("Model Saved as ", path_to_saved_models + model_filename)
 
@@ -227,11 +283,14 @@ if __name__ == '__main__':
 
 
 
+# ------
 # to test the model locally (in anaconda)
 #     at the command command line, type:
-# python drive.py model_{path_to_saved_models}model_{model_timestamp}.h5
+# python drive.py model_{path_to_saved_models}model_{model_timestamp}_{SUBDIR}.h5
+
 # examples:
 # python drive.py model.h5
-# python drive.py ./trained_models/model_170417_1741.h5
+# python drive.py ./data/trained_models/model_170422_2224_sample_training_data.h5
+# python ../drive.py ./trained_models/model_170417_1741_sample_training_data.h5
 
-# (if using docker, see instructions in "8 Running Your Network" lesson)
+# (if using docker, see instructions in Udacity Lesson: "8 Running Your Network")
