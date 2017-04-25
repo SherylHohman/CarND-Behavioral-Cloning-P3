@@ -20,8 +20,8 @@ import sys
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 
-subdir_default = 'latest'
-#subdir_default = 'sample_training_data'
+#subdir_default = 'latest'
+subdir_default = 'sample_training_data'
 epochs_default = '10'
 #batch_size_default = '32'#'128'  # is keras default batch size==32 ??
 
@@ -134,7 +134,7 @@ def load_data(SUBDIR):
 
 def preprocess(X_train, y_train):
 
-  def crop_and_resize_images(X_train)
+  def crop_and_scale_images(X_train):
 
     # # Architecture assumes image sizes (66x200x3)
     # # resize image to match that spec
@@ -142,6 +142,8 @@ def preprocess(X_train, y_train):
     # TODO
     # default interpolation = cv2.INTER_LINEAR
     # can set interpolation, depending if upsizing, or downsizing.
+    # downsample: CV_INTER_AREA interpolation,
+    # upsample: CV_INTER_CUBIC (slow) or CV_INTER_LINEAR
 
     # TODO
     # save some images for visual inspection
@@ -162,45 +164,66 @@ def preprocess(X_train, y_train):
     #   crop 35 px from top of image (21.875% of orig size)
     #   and scale the (99,300) result by 1/1.5 to achieve (66,200)
     # OR something in between the two, OR scale height, width independantly (skew)
-    input_height, input_width = X_train.shape[1:2]
+    input_height, input_width = X_train.shape[1], X_train.shape[2]
     basis_height, basis_width = (160, 320)
     # magic numbers to achieve NVidia's final shape,
     # as determined by manually inspecting a (160, 320) image
     basis_hood_crop = 25
-    # try between 25-30% max, ie 40-45px on example-sized image
+    # can try between 25-30% max, ie 40-45px on example-sized image
     max_top_crop_percentage = 0.25
-    # if use different scales, image may be skewed, which is probably ok;
-    # if use same scale, may need to crop height or width to conform with example image shape
-    basis_scale_y, example_scale_x = (input_height/basis_height, input_width/basis_width)
+    #magic number to not crop anything from sides, and minimize stretching from scaling x and y differently
+    basis_top_crop2_minimize_stretch = 29 #36 for even 1.5x and 1.6y scaling
+    # if use different scales, image may be skewed, which is possibly better than
+    #   discarding information from left and right of image;
+    # otherwise crop from sides to use the same x and y scale and avoid stretching
+    # basis_scale would resize image to (160, 320)
+    basis_scale_y, basis_scale_x = (input_height/basis_height, input_width/basis_width)
     npx_crop_from_bottom = basis_hood_crop * basis_scale_y
-    avail_y = final_height - input_height*basis_y_scale - npx_crop_bottom
-    npx_crop_from_top = min(0.25*input_height, avail_y)  # or 35px, if want to crop some from the sides as well
-    # if decide to use 35px*example_scale_y, or decide to Not scale width and height independendly: split the difference by cropping pixels from left and right
-    # get diff, divide by two, set to npx_crop_l and npx_crop_r
-    npx_crop_l = npx_crop_r = 0
+    avail_y = basis_scale_y*(input_height - npx_crop_from_bottom) - final_height
+    min_horizon_crop    = input_height*max_top_crop_percentage            #1
+    min_distortion_crop = basis_top_crop2_minimize_stretch*basis_scale_y  #2
+    npx_crop_from_top   = min(avail_y, min_distortion_crop)  # add #1 and/or #2
+    # if decide to Not scale width and height independendly:
+    #  split the difference by cropping pixels from left and right
+    #  get diff, divide by two, set to npx_crop_l and npx_crop_r
+    # npx_crop_from_left = npx_crop_from_right = 0
+    # print(npx_crop_from_bottom, npx_crop_from_top, npx_crop_from_left, npx_crop_from_right)
+    print(npx_crop_from_bottom, npx_crop_from_top)
+    print((input_height-npx_crop_from_bottom-npx_crop_from_top)/final_height, input_width/final_width, "scale_x, scale_y")
 
     # crop and scale
-    y_start = npx_crop_top
-    y_end   = start_height - npx_crop_bottom + 1
-    x_start = npx_crop_left
-    x_end   = start_width  - npx_crop_right + 1
+    y_start = int(npx_crop_from_top)
+    y_end   = int(input_height - npx_crop_from_bottom + 1)
+    # x_start = int(npx_crop_from_left)
+    # x_end   = int(input_width  - npx_crop_from_right + 1)
     print(X_train.shape, "before crop and resize")
+
+    # can't store resized image back into np.array of input image shape
+    X_resized=[]
     for image in X_train:
       # crop
-      image = image(y_start:y_end, x:start:x_end, :)
-      # scale - resize to (66,200)
+      # image = image[y_start:y_end, x_start:x_end, :]
+      image = image[y_start:y_end, :, :]
+      #print(image.shape, "after crop")
+      # scale to (66,200),
+      # results in stretched image if cropped image isn't proportional
       image = cv2.resize(image, dsize=(final_width, final_height))
-    print(X_train.shape, "after crop and resize")
+      X_resized.append(image)
+    X_resized = np.asarray(X_resized)
+    print(X_resized.shape, "X_resized")
+    return X_resized
 
 
   print("cropping and scaling images..")
   X_train = crop_and_scale_images(X_train)
+  print(X_train.shape, "after crop and resize\n")
 
   # change RGB to YUV
   print("converting to YUV..")
-  for image in X_train:
+  for i in range(X_train.shape[0]):
+    image = X_train[i]
     # our cv2 images are actually BGR, not RGB
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2YUV)
+    X_train[i] = cv2.cvtColor(image, cv2.COLOR_BGR2YUV)
 
   # Normalize, zero-center (-1,1)
   print("Normalizing..")
@@ -214,7 +237,7 @@ def preprocess(X_train, y_train):
 
   X_train = X_pixels.reshape(X_train_shape)
   print(X_train.shape)
-  print(X_train[0][0][0], ':X_train[0][0][0] :after')
+  print(X_train[0][0][0], ':X_train[0][0][0] :after\n')
 
 
   # Data Augmentation (apply during training)
@@ -246,7 +269,7 @@ def main(_):
   # Pre-Process the Data
   print('preprocessing..')
   X_train, y_train = preprocess(X_train_ORIG, y_train_ORIG)
-  print("Done Preprocessing.")
+  print("Done Preprocessing.\n")
   # TODO:
   # save pickled preproccessed data
   # add command line flag to skip above steps..
@@ -352,7 +375,7 @@ if __name__ == '__main__':
 
 # examples:
 # python drive.py model.h5
-# python drive.py ./data/trained_models/model_170422_2224_sample_training_data.h5
-# python ../drive.py ./trained_models/model_170417_1741_sample_training_data.h5
+# python drive.py ./trained_models/model_170422_2224_sample_training_data.h5
+# python ../drive.py ./model_170417_1741_sample_training_data.h5
 
 # (if using docker, see instructions in Udacity Lesson: "8 Running Your Network")
