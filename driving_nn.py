@@ -133,15 +133,128 @@ def load_data(SUBDIR):
   return X_train, y_train
 
 def preprocess(X_train, y_train):
-  # PreProcess:
+
+  # Crop Images
+
+  image_height = X_train.shape[1]
+  # remove hood of car: bottom 15.625%
+  # resolution independant = (25px / 160px image height = .15625)
+  remove_lower_percent = .15625
+  # remove top 25-30% ? of top ofimage. make it 0.2125. That would be 34px from 160
+  remove_upper_percent = .2125
+  num_pix_to_remove_from_bottom = remove_lower_percent * image_height
+  # may be an off by 1 px on these .. not that important
+  y_end   = image_height - pix_remove_from_bottom + 1
+  y_start = remove_upper_percent * image_height
+'''
+image_width/320 = multiplier to use
+start_height/multiplier = working_height = 160
+  wanna have working_height*1.6-25-66_end_height = remove_from_top = image_width*start_height*1.6/320-25bottom-66_end_height = .005*image_width*image_height-25-66-endheight
+
+  160/1.6=100; 100-25crop_hood=75; 75-66=9?
+  160-25=135; 135-35top
+
+  66x200; 160x320
+  320/200=1.6
+  (160-crop)/66=?1.6; 160-crop=?1.6*66; crop=160-105.6=54.4
+
+  (320-wcrop)/200?=1.5; crop 20px-- 10left, 10right
+  (160-hcrop)/66 ?=1.5; 160-hcrop=99; hcrop=61; 61-25hood=36top
+
+'''
+  start_height, start_width = (X_train.shape[1], Xtrian.shape[2])
+  # NVidia's image shape --> my nn's image shape requirement
+  final_height, final_width = (66, 200)
+  # magic numbers to achieve NVidia's final shape,
+  # as determined by manually inspecting a (160, 320) image
+  asif_start_height, asif_start_width = (160, 320)
+  # hood of car is approx 25px high, based on manual inspection of (160,320) image
+  npx_crop_hood = 25
+  # can crop perhaps 25-30% of top of image off, depending on where the horizon lies
+  # horizon line can change depending if car is going uphill or downhill or on flat
+  # information above horizon line is not useful to us.
+  # a rough approximation of amount of image that's probably safe to crop..
+  # on a (160,320) image that's ~40-45px.
+  # Given a (160,320) image, and cropping 25px from bottom, I'll actually
+  # be cropping about 35px to yield NVidia Shape, which is only 21.875%
+  max_percent_crop_top = .30
+  # given image size (160,320), cropping 10px from left and right, then some amount from
+  # top and bottom, and multiplying resultant image by this scale yields NVidia's shape
+  final_scale_by = 1.5
+  asif_crop_height,  asif_crop_width  = ( 99, 300)
+
+  # Now determine number of pixels to crop off the given image:
+  # resolution independant input image, scale it to give us a 320 width image
+  interim_scale_by_f = float(start_width/asif_crop_width)
+  interim_height, interim_width = [int(start_height*interim_scale_by_f), int(start_width*interim_scale_by_f)]
+  # find number of pixels to crop off left and right sides to yield a 300px width image
+  asif_npx_crop_r = (final_width - interim_width)//2
+  asif_npx_crop_l =  final_width - interim_width - npx_crop_r    # accounts for rounding of floats to ints
+  # don't assume given image is same ratio as (160, 320) (ie 1:2, could be 5:6, etc theoretically)
+  if interim_height > final_height:
+    avail = max(0, interim_height - final_height)
+    asif_npx_crop_bottom = min(npx_crop_hood, avail)
+    asif_npx_crop_top = max(0, interim_height - npx_crop_bottom - final_height, max_percent_crop_top*iterim_height)
+      # above could leave image too tall IF top_crop was limited by maxpercent_top_crop
+  else:
+    print("image is shorter than expected - width-height ratio of image is outside expected range")
+    # add rows mid-value pixels to top of image
+  #should have calculated actual pixels based on asif_scale to begin with..oh well
+  npx_crop_r = int(asif_npx_crop_r * interim_scale_by_f)
+  npx_crop_l = int(asif_npx_crop_l * interim_scale_by_f) # could lead to off by 1 rounding error
+  npx_crop_bottom = int(asif_npx_crop_bottom * interim_scale_by_f)
+  npx_crop_top    = int(asif_npx_crop_top    * interim_scale_by_f) # could lead to off by 1 rounding error
+
+  # my image size required for model is 66x200 - the dims used in NVIDIA's paper
+  final_height, final_width = (66,200)
+  # The input image size I used for computations was (160, 320)
+  # At that size, to crop the hood of the car out of the image
+  # 25px could be cropped off the bottom of the image.
+  # I could then crop 160-105.6 or 54.6px from top of image,
+  # and scale the entire result by 1/1.6 or .625 to reach final
+  # OR (my choice)
+  # crop 10px from left and 10px from right of image
+  # crop 35 px from top of image (21.875% of orig size)
+  # - I figure I can actually crop 40-45px or 30% of the top, without interfering
+  #   with the horizon, even when on a downhill.
+  # and scale the result by 1.5
+  # or something in between the two.
+  input_height, input_width = X_train.shape[1:2]
+  example_height, example_width = (160, 320)
+  example_hood_crop = 25
+  max_top_crop_percentage = 0.25  # try between 25-30% max, ie 40-45px on example-sized image
+  # if use different scales, image may be skewed, which is probably ok;
+  # if use same scale, may need to crop height or width to conform with example image shape
+  example_scale_y, example_scale_x = (input_height/example_height, input_width/example_width)
+  npx_crop_from_bottom = example_hood_crop * example_scale_y
+  avail_y = final_height - input_height*example_y_scale - npx_crop_bottom
+  npx_crop_from_top = min(0.25*input_height, avail_y)  # or 35px, if want to crop some from the sides as well
+  # if decide to use 35px*example_scale_y, or decide to Not scale width and height independendly: split the difference by cropping pixels from left and right
+  # get diff, divide by two, set to npx_crop_l and npx_crop_r
+  npx_crop_l = npx_crop_r = 0
+
+  # crop and scale
+  y_start = npx_crop_top
+  y_end   = start_height - npx_crop_bottom + 1
+  x_start = npx_crop_left
+  x_end   = start_width  - npx_crop_right + 1
+  print(X_train.shape, "before crop and resize")
+  for image in X_train:
+    # crop
+    image = image(y_start:y_end, x:start:x_end, :)
+    # scale - resize to (66,200)
+    image = cv2.resize(image, dsize=(final_width, final_height))
+  print(X_train.shape, "after crop and resize")
+
+
   # change RGB to YUV
   print("converting to YUV..")
   for image in X_train:
     # our cv2 images are actually BGR, not RGB
     image = cv2.cvtColor(image, cv2.COLOR_BGR2YUV)
 
+  # Normalize, zero-center (-1,1)
   print("Normalizing")
-  # Normalize, zero-center (-1,1) could instead do a MinMax thing
   X_train_shape = X_train.shape
   print(X_train.shape)
   print(X_train[0][0][0], ':X_train[0][0][0] :before')
@@ -154,8 +267,16 @@ def preprocess(X_train, y_train):
   print(X_train.shape)
   print(X_train[0][0][0], ':X_train[0][0][0] :after')
 
-  # Crop: hood of car; some amount above the horizon
-  #print("Cropping..")
+  # Image Resize
+  # Architecture assumes image sizes (66x200x3)
+  # so let's resize image to match that spec
+  image_height = X_train.shape[1]
+  image_width  = X_train.shape[2]
+  for image in X_train:
+    image = cv2.resize(image, (66.0/image_height, 200/image_width), interpolation = cv2.INTER_LINEAR )
+  # save images for visual inspection
+  # ..or can I do something like 33x100 instead.  Probably slightly diff #'s req'
+
   # Data Augmentation (apply during training)
 
   return(X_train, y_train)
@@ -180,11 +301,13 @@ def main(_):
   # load raw data
   X_train_ORIG, y_train_ORIG = load_data(SUBDIR)
   print('dataset shapes', X_train_ORIG.shape, y_train_ORIG.shape, "\n")
+  # save pickled data??
 
   # Pre-Process the Data
   print('preprocessing..')
   X_train, y_train = preprocess(X_train_ORIG, y_train_ORIG)
   print("Done Preprocessing.")
+  # save pickled preproccessed data?
 
 
   # for regression, we want a single value, ie steering angle predicted.
