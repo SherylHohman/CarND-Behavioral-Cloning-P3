@@ -196,9 +196,10 @@ def preprocess(X_train):
       #  get diff, divide by two, set to npx_crop_l and npx_crop_r
     npx_crop_from_left = npx_crop_from_right = 0
 
-    print(npx_crop_from_bottom, npx_crop_from_top, npx_crop_from_left, npx_crop_from_right, "number of pixels to crop (b,t,l,r")
-    print((input_height - npx_crop_from_bottom - npx_crop_from_top, input_width - npx_crop_from_left - npx_crop_from_right), "anticipated size after crop")
-    print((input_height - npx_crop_from_bottom - npx_crop_from_top)/final_height, input_width/final_width, "scale_x, scale_y")
+    if verbose:
+      print(npx_crop_from_bottom, npx_crop_from_top, npx_crop_from_left, npx_crop_from_right, "number of pixels to crop (b,t,l,r")
+      print((input_height - npx_crop_from_bottom - npx_crop_from_top, input_width - npx_crop_from_left - npx_crop_from_right), "anticipated size after crop")
+      print((input_height - npx_crop_from_bottom - npx_crop_from_top)/final_height, input_width/final_width, "scale_x, scale_y")
 
     # crop and scale
     y_start = npx_crop_from_top
@@ -223,7 +224,7 @@ def preprocess(X_train):
     return resized
 
   def convert_to_YUV(images):
-    # takes in a list or array of images ie: [image], or X_train
+    # takes in an array of images ie: [image], or X_train
     images_yuv = []
     for i in range(len(images)):
       image = images[i]
@@ -235,7 +236,7 @@ def preprocess(X_train):
     return images_yuv
 
   def normalize_pixels(matrix):
-    # takes in an image, or an array of images: image, [image], X_train
+    # takes in an image(array) or an array of image(arrays): image, X_train
     # Normalize, zero-center (-1,1)
     matrix_shape = matrix.shape
     pixels = matrix.flatten()
@@ -245,42 +246,46 @@ def preprocess(X_train):
 
 
   # if len(X_train)>1:
-  #   training = True
+  #   verbose = True
   # else:  # simulator is driving in autonomous mode
-  #   training = False
-  training = True
+  #   verbose = False
+  # verbose = True
 
   # might be more efficient to have outter loop cycle through all images
   #  calling each function on a single image only
   #  then would need to convert back to np.asarray only once..
   #  then again, doesn't really matter..
 
+  # drive.py passes in [image_array] as a list. needs to be array
+  # if len(x_train) == 1:
+  #   X_train = np.asarray(X_train)
+
   # crop and scale images to (66, 200)
-  if training:
-    print("cropping and scaling images..")
-    print(X_train.shape, "before crop and resize")
+  # if verbose:
+  #   print("cropping and scaling images..")
+  #   print(X_train.shape, "before crop and resize")
 
   X_train = crop_and_scale_images(X_train)
-  if training:
-      print(X_train.shape, "after crop and resize\n")
+  # if verbose:
+  #     print(X_train.shape, "after crop and resize\n")
 
   # change RGB to YUV
-  if training:
-      print("converting to YUV..")
+  # if verbose:
+  #     print("converting to YUV..")
   X_train = convert_to_YUV(X_train)
   #for i in range(X_train.shape[0]):
   #  X_train[i] = convert_to_YUV(X_train[i])
-  if training:
-      print(X_train.shape, "after YUV conversion\n")
+  # if verbose:
+  #     print(X_train.shape, "after YUV conversion\n")
 
   # Normalize, zero-center (-1,1)
-  if training:
-    print("Normalizing..")
-    print(X_train[0][0][0][:], ':X_train[0][0][0] :before')
+  # if verbose:
+  #   print("Normalizing..")
+  #   print(X_train[0][0][0][:], ':X_train[0][0][0] :before')
   X_train = normalize_pixels(X_train)
-  if training:
-      print(X_train[0][0][0][:], ':X_train[0][0][0] :after')
-      print(X_train.shape, "after Normalization\n")
+  # if verbose:
+  #     print(X_train[0][0][0][:], ':X_train[0][0][0] :after')
+  #     print(X_train.shape, "after Normalization\n")
 
 
   return(X_train)
@@ -313,7 +318,7 @@ def main(_):
   # TODO:
   # save pickled preproccessed data
   # add command line flag to skip above steps..
-  #.. start HERE by reading this data in instead
+  #.. and to start HERE by reading this data in instead
 
   # Visualize Data
   # sample cropped/resized images (center, left, right)
