@@ -23,10 +23,12 @@ FLAGS = flags.FLAGS
 #subdir_default = 'latest'
 subdir_default = 'sample_training_data'
 epochs_default = '10'
+pickle_default = ''
 
 # name_of_directory under './data/' that has the training data to use
 flags.DEFINE_string('subdir', subdir_default, "subdir that training data is stored in, relative to ./data/")
 flags.DEFINE_string('epochs', epochs_default, "EPOCHS")
+flags.DEFINE_string('pickle', pickle_default, "preprocessed data file to read, relative to ./data/ (omit the '.pnz' filetype suffix")
 
 
 def load_data(SUBDIR):
@@ -308,18 +310,45 @@ def main(_):
   print(EPOCHS, "EPOCHS")
   SUBDIR = FLAGS.subdir
   print(SUBDIR, ": subdir of './data/' that training data resides in")
+  NPZ_FILE = FLAGS.pickle
+  if NPZ_FILE != "":
+    print(NPZ_FILE, ": reading preprocessed data file")
+
   print()
 
-  # load raw training data
-  X_train_ORIG, y_train_ORIG = load_data(SUBDIR)
-  print('dataset shapes', X_train_ORIG.shape, y_train_ORIG.shape, "\n")
-  # save pickled data??
+  if NPZ_FILE == "":
 
-  # Pre-Process the Data
-  print('preprocessing..')
-  X_train = preprocess(X_train_ORIG)
-  y_train = y_train_ORIG
-  print("Done Preprocessing.\n")
+    # load raw training data
+    X_train_ORIG, y_train_ORIG = load_data(SUBDIR)
+    print('dataset shapes', X_train_ORIG.shape, y_train_ORIG.shape, "\n")
+    # save pickled data??
+
+    # Pre-Process the Data
+    print('preprocessing..')
+    X_train = preprocess(X_train_ORIG)
+    y_train = y_train_ORIG
+    print("Done Preprocessing.\n")
+
+    # train_data = {X_train: X_train, y_train:y_train}
+    npz_filename = "./data/" + SUBDIR + ".npz"
+    np.savez(npz_filename, X_train=X_train, y_train=y_train)
+    print("\n preprocessed training data saved as:", npz_filename, "\n")
+    # pickle_filename = SUBDIR + ".pickle"
+    # with open(pickle_filename, "wb") as handle:
+    #   cPickle.dump(train_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # print("\n preprocessed training data saved as:", pickle_filename, "\n")
+
+  else:
+    npz_filename = './data/' + NPZ_FILE + '.npz'
+    print("reading preprocessed data from:", npz_filename)
+    npzfile = np.load(npz_filename)
+    X_train = npzfile['X_train']
+    y_train = npzfile['y_train']
+
+    # with open(pickle_filename, "rb") as handle:
+    #   cPickle.read(train_data, handle)
+    # X_train, y_train = train_data.X_train, train_data.y_train
+    print(X_train.shape, y_train.shape, "preprocessed shapes: X_train, y_train")
 
   # TODO:
   # save pickled preproccessed data
@@ -420,9 +449,7 @@ def main(_):
     at the command command line, type:
   '''
   )
-  print('  python drive.py model_'+path_to_saved_models+'model_'+ model_filename)
-
-
+  print(' python drive.py ' + path_to_saved_models + model_filename)
   print(
   '''
      examples:
