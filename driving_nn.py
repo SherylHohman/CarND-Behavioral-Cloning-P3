@@ -28,6 +28,9 @@ pickle_default = ''
 # name_of_directory under './data/' that has the training data to use
 flags.DEFINE_string('subdir', subdir_default, "subdir that training data is stored in, relative to ./data/")
 flags.DEFINE_string('epochs', epochs_default, "EPOCHS")
+# if already preprocessed this data, skip parsing raw data, and skip preprocessing
+# by supplying the base name of a pnz file (yep, pickle didn't work on np.array)
+# flag name remains
 flags.DEFINE_string('pickle', pickle_default, "preprocessed data file to read, relative to ./data/ (omit the '.pnz' filetype suffix")
 
 
@@ -313,47 +316,34 @@ def main(_):
   NPZ_FILE = FLAGS.pickle
   if NPZ_FILE != "":
     print(NPZ_FILE, ": reading preprocessed data file")
-
   print()
 
   if NPZ_FILE == "":
-
     # load raw training data
     X_train_ORIG, y_train_ORIG = load_data(SUBDIR)
     print('dataset shapes', X_train_ORIG.shape, y_train_ORIG.shape, "\n")
-    # save pickled data??
 
     # Pre-Process the Data
     print('preprocessing..')
     X_train = preprocess(X_train_ORIG)
     y_train = y_train_ORIG
-    print("Done Preprocessing.\n")
+    print("Done Preprocessing.")
 
-    # train_data = {X_train: X_train, y_train:y_train}
+    # save preprocessed data as npz file for later-reuse
+    print("  Saving Preprocessed data for later re-use..")
     npz_filename = "./data/" + SUBDIR + ".npz"
     np.savez(npz_filename, X_train=X_train, y_train=y_train)
-    print("\n preprocessed training data saved as:", npz_filename, "\n")
-    # pickle_filename = SUBDIR + ".pickle"
-    # with open(pickle_filename, "wb") as handle:
-    #   cPickle.dump(train_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    # print("\n preprocessed training data saved as:", pickle_filename, "\n")
+    print("  Preprocessed training data saved as:", npz_filename, "\n")
 
   else:
+    # load preprocessed X_train and y_train data
     npz_filename = './data/' + NPZ_FILE + '.npz'
     print("reading preprocessed data from:", npz_filename)
     npzfile = np.load(npz_filename)
     X_train = npzfile['X_train']
     y_train = npzfile['y_train']
 
-    # with open(pickle_filename, "rb") as handle:
-    #   cPickle.read(train_data, handle)
-    # X_train, y_train = train_data.X_train, train_data.y_train
-    print(X_train.shape, y_train.shape, "preprocessed shapes: X_train, y_train")
-
-  # TODO:
-  # save pickled preproccessed data
-  # add command line flag to skip above steps..
-  #.. and to start HERE by reading this data in instead
+    print(X_train.shape, y_train.shape, "preprocessed shapes: X_train, y_train\n")
 
   # TODO:
   # Visualize Data
