@@ -306,6 +306,7 @@ def main(_):
   from keras.models import Sequential
   from keras.layers.core import Dense, Activation, Flatten
   from keras.layers.convolutional import Convolution2D
+  from keras.callbacks import ModelCheckpoint, EarlyStopping
 
   # get flag values from command line (or defaults)
   print('\nflag values:')
@@ -419,17 +420,26 @@ def main(_):
   # no softmax or maxarg on regression network; just the raw output value
 
   ## TRAIN Model
-  print("Training Model..")
-  # for regression: use mse. no cross_entropy, no softmax
-  model.compile(loss='mse', optimizer='adam')
-  model.fit(X_train, y_train, shuffle=True, validation_split=0.2, nb_epoch=EPOCHS)
 
   ## SAVE model: h5 format for running in autonomous mode on simulator
-  print("\nSaving model..")
   model_timestamp = time.strftime("%y%m%d_%H%M")
   path_to_saved_models = './trained_models/'
   model_filename = 'model_' + model_timestamp + '_' + SUBDIR +'.h5'
-  model.save(path_to_saved_models + model_filename)
+
+  # at each epoch, save the best model so far, as defined by lowest validation loss
+  callbacks = [
+    EarlyStopping(monitor='val_loss', patience=5, verbose=1),
+    ModelCheckpoint(path_to_saved_models+model_filename, monitor='val_loss', verbose=1, save_best_only=True, save_weights_only=False, mode='auto', period=1)
+    ]
+
+  print("Training Model..")
+
+  # for regression: use mse. no cross_entropy, no softmax
+  model.compile(loss='mse', optimizer='adam')
+  model.fit(X_train, y_train, shuffle=True, validation_split=0.2, nb_epoch=EPOCHS, callbacks=callbacks)
+
+  print("\nSaving model..")
+  #model.save(path_to_saved_models + model_filename)
   print("Model Saved as ", path_to_saved_models + model_filename)
 
   # ------
