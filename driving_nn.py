@@ -135,10 +135,12 @@ def preprocess(X_train):
   # or: X_train - array of images, if training
 
   def crop_and_scale_images(images):
-    #takes in a list or array of images: ie X_train, or [image]
+    #takes in an array of images: ie X_train, or [image] (as np.array, not list)
 
     # # Architecture assumes image sizes (66x200x3)
-    # # resize image to match that spec
+    if verbose:
+      print("cropping and scaling images..")
+      print(images.shape, "before crop and resize")
 
     # TODO
     # save some images for visual inspection
@@ -155,10 +157,10 @@ def preprocess(X_train):
     # crop 10px from left and 10px from right of image
     #   crop 35 px from top of image (21.875% of orig size)
     #   and scale the (99,300) result by 1/1.5 to achieve (66,200)
-    # OR something in between the two, OR scale height, width independantly (skew)
+    # OR something in between the two, OR scale height, width independantly (stretch)
 
     input_height, input_width = images.shape[1], images.shape[2]
-    #image size required for model is (66,200) == dims used in NVIDIA's paper
+    #image size required for model: (66,200) == dims used in NVIDIA's paper
     final_height, final_width = (66,200)
     basis_height, basis_width = (160, 320)
 
@@ -172,34 +174,39 @@ def preprocess(X_train):
     #   based on manual inspection of a (160, 320) image
     basis_hood_crop = 25
     # magic number to minimize stretching without cropping from sides
-    basis_top_crop2_minimize_stretch = 29  # 36 for 1.5x x 1.6y scaling
-      # if use different scales, can crop from L and R to avoid stretching image
+    basis_top_crop2_minimize_stretch = 29  # (1.606 x 1.6); 36 for (1.5x1.6
+      # can crop from L and R to avoid stretching image
       # however, image stretching may be preferred to cropping L and R pixels..
-      # basis_scale would resize image to (160, 320)
-    # about 25-30%, or ~ 40-48px on a (160,320)
-    max_top_crop_percentage = 0.30         # 48px
+    # maximum crop to horizon is perhaps about 25-30% of input image
+    # 40-48px on (160,320)
+    max_top_crop_percentage = 0.30   # ~48px  (stretches image: 1.3x1.6)
+
+    # basis_scale would resize input image to (160, 320)
+    basis_scale_y = input_height/basis_height
+    basis_scale_x = input_width/basis_width
 
     # crop out hood of car
-    basis_scale_y, basis_scale_x = (input_height/basis_height, input_width/basis_width)
     npx_crop_from_bottom = int(basis_hood_crop * basis_scale_y)
 
     # crop out some amount above the horizon
-    avail_y = basis_scale_y*(input_height - npx_crop_from_bottom) - final_height
-    # to minimize the amount of horizon left in photo, inducing stretching to achieve aspect ratio
-    max_horizon_crop    = input_height*max_top_crop_percentage               #1
-    # to minimize distortion by cropping an amount off the top to get as close to the final aspect ratio as possible
-    min_distortion_crop = basis_top_crop2_minimize_stretch*basis_scale_y     #2
-    npx_crop_from_top   = int(min(avail_y, min_distortion_crop))  # add #1 and/or #2
+    avail_y = int(basis_scale_y*(input_height - npx_crop_from_bottom) - final_height)
+    # to minimize the amount of horizon left in photo.
+    # Induces stretching to achieve correct aspect ratio
+    max_horizon_crop    = int(input_height*max_top_crop_percentage)               #1
+    # minimize distortion by cropping an amount off the top to get as close to the final aspect ratio as possible
+    min_distortion_crop = int(basis_top_crop2_minimize_stretch*basis_scale_y)     #2
 
-    # if want to crop sides, to achieve final aspect ratio withoug stretching..
-      #  split the difference by cropping pixels from left and right
-      #  get diff, divide by two, set to npx_crop_l and npx_crop_r
+    #npx_crop_from_top   = min(avail_y, min_distortion_crop)  # add #1 and/or #2
+    npx_crop_from_top = min(avail_y, max_horizon_crop)
+
+    # want to crop sides, to achieve final aspect ratio without stretching..
+    #   change below to not be zero
     npx_crop_from_left = npx_crop_from_right = 0
 
     if verbose:
-      print(npx_crop_from_bottom, npx_crop_from_top, npx_crop_from_left, npx_crop_from_right, "number of pixels to crop (b,t,l,r")
+      print(npx_crop_from_bottom, npx_crop_from_top, npx_crop_from_left, npx_crop_from_right, "number of pixels to crop (b,t,l,r)")
       print((input_height - npx_crop_from_bottom - npx_crop_from_top, input_width - npx_crop_from_left - npx_crop_from_right), "anticipated size after crop")
-      print((input_height - npx_crop_from_bottom - npx_crop_from_top)/final_height, input_width/final_width, "scale_x, scale_y")
+      print("scale_y:", (input_height - npx_crop_from_bottom - npx_crop_from_top)/final_height, " scale_x:", input_width/final_width)
 
     # crop and scale
     y_start = npx_crop_from_top
@@ -207,24 +214,28 @@ def preprocess(X_train):
     x_start = npx_crop_from_left
     x_end   = input_width  - npx_crop_from_right + 1
 
-    # "images" array expects input_shaped images;
-    # store resized images to new list/array
+    # "images" array expects input_shaped images; so,
+    # must store resized images to new list/array
     resized=[]
-
     for image in images:
       # crop
-      # image = image[y_start:y_end, x_start:x_end, :]
-      image = image[y_start:y_end, :, :]
-      # scale to (66,200),
-      # will stretch image if cropped image isn't same aspect ratio as final
+      image = image[y_start:y_end, x_start:x_end, :]
+      # scale to (66,200)
+      # image stretches if cropped image isn't same aspect ratio as final
+      # It's fine to stretch the image, I think - as long as the automated driving images are stretched in the same manner as the training images
       image = cv2.resize(image, dsize=(final_width, final_height), interpolation=interpolation)
       resized.append(image)
     resized = np.asarray(resized)
+
+    if verbose:
+        print(resized.shape, "after crop and resize\n")
 
     return resized
 
   def convert_to_YUV(images):
     # takes in an array of images ie: [image], or X_train
+    if verbose:
+        print("converting to YUV..")
     images_yuv = []
     for i in range(len(images)):
       image = images[i]
@@ -233,60 +244,54 @@ def preprocess(X_train):
       image = cv2.cvtColor(image, cv2.COLOR_BGR2YUV)
       images_yuv.append(image)
     images_yuv = np.asarray(images_yuv, np.float64)
+    if verbose:
+        print(images_yuv.shape, "after YUV conversion\n")
     return images_yuv
 
   def normalize_pixels(matrix):
-    # takes in an image(array) or an array of image(arrays): image, X_train
+    # takes in an image(array) or an array of image(arrays):
+    # ie image, [images] (as an np.array), X_train
+    # cannot be a list
+    if verbose:
+      print("Normalizing..")
+      print(matrix[0][0][0][:], ':matrix[0][0][0] :before')
+
     # Normalize, zero-center (-1,1)
     matrix_shape = matrix.shape
     pixels = matrix.flatten()
     pixels = (pixels - 128.0)/277.0
     matrix = pixels.reshape(matrix_shape)
+
+    if verbose:
+        print(matrix[0][0][0][:], ':matrix[0][0][0] :after')
+        print(matrix.shape, "after Normalization\n")
     return matrix
 
 
-  # if len(X_train)>1:
-  #   verbose = True
-  # else:  # simulator is driving in autonomous mode
-  #   verbose = False
-  # verbose = True
+  # begin preprocessing
 
+  if len(X_train)>1:
+    # training: give feedback on progress
+    verbose = True
+  else:  # simulator is driving in autonomous mode
+    verbose = False
+
+  # TODO:
   # might be more efficient to have outter loop cycle through all images
   #  calling each function on a single image only
-  #  then would need to convert back to np.asarray only once..
-  #  then again, doesn't really matter..
+  #  if so, would need to convert back to np.asarray only once..
+  #  then again, may not matter..
 
-  # drive.py passes in [image_array] as a list. needs to be array
-  # if len(x_train) == 1:
-  #   X_train = np.asarray(X_train)
+  # drive.py must pass in [image_array] as an np.array, cannot be a list
 
   # crop and scale images to (66, 200)
-  # if verbose:
-  #   print("cropping and scaling images..")
-  #   print(X_train.shape, "before crop and resize")
-
   X_train = crop_and_scale_images(X_train)
-  # if verbose:
-  #     print(X_train.shape, "after crop and resize\n")
 
   # change RGB to YUV
-  # if verbose:
-  #     print("converting to YUV..")
   X_train = convert_to_YUV(X_train)
-  #for i in range(X_train.shape[0]):
-  #  X_train[i] = convert_to_YUV(X_train[i])
-  # if verbose:
-  #     print(X_train.shape, "after YUV conversion\n")
 
   # Normalize, zero-center (-1,1)
-  # if verbose:
-  #   print("Normalizing..")
-  #   print(X_train[0][0][0][:], ':X_train[0][0][0] :before')
   X_train = normalize_pixels(X_train)
-  # if verbose:
-  #     print(X_train[0][0][0][:], ':X_train[0][0][0] :after')
-  #     print(X_train.shape, "after Normalization\n")
-
 
   return(X_train)
 
@@ -315,11 +320,13 @@ def main(_):
   X_train = preprocess(X_train_ORIG)
   y_train = y_train_ORIG
   print("Done Preprocessing.\n")
+
   # TODO:
   # save pickled preproccessed data
   # add command line flag to skip above steps..
   #.. and to start HERE by reading this data in instead
 
+  # TODO:
   # Visualize Data
   # sample cropped/resized images (center, left, right)
   # distribution of steering angles (see how dist changes with augmentation)
@@ -399,12 +406,35 @@ def main(_):
   model.fit(X_train, y_train, shuffle=True, validation_split=0.2, nb_epoch=EPOCHS)
 
   ## SAVE model: h5 format for running in autonomous mode on simulator
-  print("Saving model..")
+  print("\nSaving model..")
   model_timestamp = time.strftime("%y%m%d_%H%M")
   path_to_saved_models = './trained_models/'
   model_filename = 'model_' + model_timestamp + '_' + SUBDIR +'.h5'
   model.save(path_to_saved_models + model_filename)
   print("Model Saved as ", path_to_saved_models + model_filename)
+
+  # ------
+  print(
+  '''
+    to test this model locally (in anaconda)
+    at the command command line, type:
+  '''
+  )
+  print('  python drive.py model_'+path_to_saved_models+'model_'+ model_filename)
+
+
+  print(
+  '''
+     examples:
+     python drive.py model.h5
+     python drive.py ./trained_models/model_170422_2224_sample_training_data.h5
+     python ../drive.py ./model_170417_1741_sample_training_data.h5
+
+  python drive.py model_{path_to_saved_models}model_{model_timestamp}_{SUBDIR}.h5
+  '''
+  )
+  # (if using docker, see instructions in Udacity Lesson: "8 Running Your Network")
+  # -----
 
 
 # parses flags and calls the `main` function above
@@ -413,14 +443,3 @@ if __name__ == '__main__':
 
 
 
-# ------
-# to test the model locally (in anaconda)
-#     at the command command line, type:
-# python drive.py model_{path_to_saved_models}model_{model_timestamp}_{SUBDIR}.h5
-
-# examples:
-# python drive.py model.h5
-# python drive.py ./trained_models/model_170422_2224_sample_training_data.h5
-# python ../drive.py ./model_170417_1741_sample_training_data.h5
-
-# (if using docker, see instructions in Udacity Lesson: "8 Running Your Network")

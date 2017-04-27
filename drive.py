@@ -65,8 +65,12 @@ def telemetry(sid, data):
         image_array = np.asarray(image)
 
         # use same preprocessing that was used to train the model
+        # print(image_array.shape, "image_array shape from telemetry")
+        #   interesting: image size is always 320x160,
+        #   ..no matter the size screen chosen for playing the simulator)
+        # preprocess() requires an np array of images
         image_array = preprocess(np.asarray([image_array]))[0]
-        
+
         steering_angle = float(model.predict(image_array[None, :, :, :], batch_size=1))
 
         throttle = controller.update(float(speed))
