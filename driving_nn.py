@@ -307,6 +307,7 @@ def main(_):
   from keras.layers.core import Dense, Activation, Flatten
   from keras.layers.convolutional import Convolution2D
   from keras.callbacks import ModelCheckpoint, EarlyStopping
+  from keras.preprocessing.image import ImageDataGenerator
 
   # get flag values from command line (or defaults)
   print('\nflag values:')
@@ -358,6 +359,7 @@ def main(_):
   # - left/right cameras, if used
   # - skew, shift, flip, etc, if used
 
+  batch_size = 32   # keras' default
 
   # for regression, we want a single value, ie steering angle predicted.
   image_input_shape = X_train.shape[1:]
@@ -419,12 +421,17 @@ def main(_):
   model.add(Dense(1))
   # no softmax or maxarg on regression network; just the raw output value
 
-  ## TRAIN Model
+  # Define Loss function, and Optimization function
+  # for regression: use mse. no cross_entropy; no softmax.
+  model.compile(loss='mse', optimizer='adam')
 
   ## SAVE model: h5 format for running in autonomous mode on simulator
   model_timestamp = time.strftime("%y%m%d_%H%M")
   path_to_saved_models = './trained_models/'
   model_filename = 'model_' + model_timestamp + '_' + SUBDIR +'.h5'
+
+  ## TRAIN Model
+  print("Training Model..")
 
   # at each epoch, save the best model so far, as defined by lowest validation loss
   callbacks = [
@@ -432,11 +439,66 @@ def main(_):
     ModelCheckpoint(path_to_saved_models+model_filename, monitor='val_loss', verbose=1, save_best_only=True, save_weights_only=False, mode='auto', period=1)
     ]
 
-  print("Training Model..")
+  ## Data Augmentation
+  def custom_data_gen(...):
 
-  # for regression: use mse. no cross_entropy, no softmax
-  model.compile(loss='mse', optimizer='adam')
-  model.fit(X_train, y_train, shuffle=True, validation_split=0.2, nb_epoch=EPOCHS, callbacks=callbacks)
+    # ImageDataGenerator
+    #  ..Generate minibatches of image data with real-time data augmentation
+    #    IDG.flow RETURNS a numpy_iterator : yields a batch of images,
+    #      or batch of imahes AND labels
+    #      depending if labels was passed in or not (ie self.y=None)
+    #
+
+    # get an X_image
+    # optionally (randomly) flip it
+    # if flipped:
+    #   y[i] = -y[i]
+    # else:
+    #   y[i] = y[i]
+    # since X is shuffled, then I can simply return the next i
+    #   if i is the index yielded/saved at each generator call
+    # generator is exhausted at end of i's (ie samples_per_epoch)
+    # if only want a percentage of the x's with a zero value, then
+    # samples_per_epoch will be:
+    # number_samples_where_y_is_NOT_zero +
+    #      percentage_0s_to_use * number_of_samples_where_y_IS_zero
+    # question is, does this gen_func return 1_image/label, or batch_images/labels
+    # I think flow yields batch-size images,
+    #   this yields a single image,
+    #   fit_gen yields epoch's worth of images via epochs/batch-size calls
+
+
+  # randomly flip half the dataset horizontally
+  imageDataGen       = ImageDataGenerator(horizontal_flip=True)
+  imageDataGenerator = custom_data_generator(X_train, y_train)
+
+  # fit paramaters using augmented data
+  model.fit_generator(imageDataGenerator.flow(X_train, y_train,
+                                              batch_size=batch_size),
+                      samples_per_epoch=X_train.shape[0],
+                      nb_epoch=EPOCHS,
+                      # validation_split=0.2, # needs to be an array (below)
+                      validation_data = ??
+                      callbacks=callbacks)
+
+## from docs..
+fit_generator(self, generator,
+                    samples_per_epoch,
+                    nb_epoch,
+                    verbose=1,
+                    callbacks=None,
+                    validation_data=None,   **
+                    nb_val_samples=None,    **
+                    class_weight=None,
+                    max_q_size=10,
+                    nb_worker=1,
+                    pickle_safe=False,
+                    initial_epoch=0)
+
+
+  # fit paramaters on preprocessed data
+  # model.fit(X_train, y_train, shuffle=True, validation_split=0.2, nb_epoch=EPOCHS, callbacks=callbacks)
+
 
   print("\nSaving model..")
   #model.save(path_to_saved_models + model_filename)
