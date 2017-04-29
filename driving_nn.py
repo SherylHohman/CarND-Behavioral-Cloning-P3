@@ -433,6 +433,12 @@ def main(_):
   ## TRAIN Model
   print("Training Model..")
 
+  # generator_fit does not have an argument "validation_split" to automatically separate out validation data, so must do this myself
+  # ( or create a validation_set generator to do this for me.
+  #   either a validation_set generator, or a (X_valid, y_valid) tuple MUST be passed in to the "fit_generator" function as validation_data=xx)
+  from sklearn.model_selection import train_test_split
+  X_train, y_train, X_valid, y_valid = sklearn.model_selection.train_test_split(X_train, y_train, train_size=0.8, stratify=True, random_state=42)
+
   # at each epoch, save the best model so far, as defined by lowest validation loss
   callbacks = [
     EarlyStopping(monitor='val_loss', patience=5, verbose=1),
@@ -440,12 +446,12 @@ def main(_):
     ]
 
   ## Data Augmentation
-  def custom_data_gen(...):
+  def custom_data_generator(X_train, y_train):
 
     # ImageDataGenerator
     #  ..Generate minibatches of image data with real-time data augmentation
     #    IDG.flow RETURNS a numpy_iterator : yields a batch of images,
-    #      or batch of imahes AND labels
+    #      or batch of images AND batch of labels,
     #      depending if labels was passed in or not (ie self.y=None)
     #
 
@@ -467,19 +473,67 @@ def main(_):
     #   this yields a single image,
     #   fit_gen yields epoch's worth of images via epochs/batch-size calls
 
+     # x is a single image, so it doesn't have image number at index 0
+    # img_row_axis = self.row_axis - 1\
+
+    # row_axis=1, col_axis=2, channel_axis=0
+    # wrong, that would be for theano.
+    # tf, items
+    image_row_axis=0, img_col_axis=1, channel_axis=2
+
+    def flip_axis(x, axis):
+    x = np.asarray(x).swapaxes(axis, 0)
+    x = x[::-1, ...]
+    x = x.swapaxes(0, axis)
+    return x
+
+    def horizontal_flip_50_50(image, label):
+      if np.random.random() < 0.5:
+        image = flip_axis(x, img_col_axis)
+        if label !=0:
+          label = -1 * label
+        return image, label
+
+
+    x_batch, y_batch = [], []
+    i=0
+    for i in range(len(X_train))
+      for count in range(batch_size):
+        x, y = horizontal_flip_50_50(X_train[i], y_train[i])
+          x_batch.append(x)
+          y_batch.append(y)
+      # yield when have gathered count==batch_size images
+      yield x_batch, y_batch
+      # rem, once i reaches the end of the X_train array,
+      #  an exception will occur
+      i += 1
 
   # randomly flip half the dataset horizontally
-  imageDataGen       = ImageDataGenerator(horizontal_flip=True)
+  # imageDataGen       = ImageDataGenerator(horizontal_flip=True)
   imageDataGenerator = custom_data_generator(X_train, y_train)
 
-  # fit paramaters using augmented data
+  # fits the model on batches with real-time data augmentation:
   model.fit_generator(imageDataGenerator.flow(X_train, y_train,
                                               batch_size=batch_size),
                       samples_per_epoch=X_train.shape[0],
                       nb_epoch=EPOCHS,
                       # validation_split=0.2, # needs to be an array (below)
-                      validation_data = ??
+                      validation_data = (X_valid, y_valid)
                       callbacks=callbacks)
+
+"""
+## from docs..
+# model_fit_generator is equivalent to:
+for e in range(epochs):
+    print('Epoch', e)
+    batches = 0
+    for x_batch, y_batch in datagen.flow(x_train, y_train, batch_size=32):
+        model.fit(x_batch, y_batch)
+        batches += 1
+        if batches >= len(x_train) / 32:
+            # we need to break the loop by hand because
+            # the generator loops indefinitely
+            break
 
 ## from docs..
 fit_generator(self, generator,
@@ -495,7 +549,16 @@ fit_generator(self, generator,
                     pickle_safe=False,
                     initial_epoch=0)
 
+                ** validation_data: this can be either
+                    - a generator for the validation data
+                    - a tuple (inputs, targets)
+                    - a tuple (inputs, targets, sample_weights).
+                   nb_val_samples: only relevant if validation_data is a     generator. number of samples to use from validation generator at the end of every epoch.
 
+"""
+
+
+  # if no augmentation use this fit function:
   # fit paramaters on preprocessed data
   # model.fit(X_train, y_train, shuffle=True, validation_split=0.2, nb_epoch=EPOCHS, callbacks=callbacks)
 
