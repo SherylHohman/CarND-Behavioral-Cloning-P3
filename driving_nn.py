@@ -547,42 +547,42 @@ def main(_):
       return x
 
     def horizontal_flip_50_50(image, label):
-      print("in horizontal_flip_50_50..")
+      print("\nin horizontal_flip_50_50..")
+      print("input  image, label:", image[0][0][0], label)
       if np.random.random() < 0.5:
         image = flip_axis(image, img_col_axis)
         if label != 0:
           label = -1 * label
-        return image, label
+        print("flipped", image[0][-1][0], label)
+      else:
+        print("not flipped:", image[0][0][0], label)
+      return image, label
 
     print("\nin custom_data_generator..")
+    # TODO: re-shuffle X_train at each epoch?
     x_batch, y_batch = [], []
-    #i=0
-    #while (True):
-    count = 0
-    # TODO: re-shuffle ?
-    for i in range(len(X_train)):
-      # final batch_size of an epoch == remaining elements in X_train..
+    i=0
+    # while i<len(X_train)
+    while (True):
       this_batch_size = min(batch_size, len(X_train)-i)
-      print(this_batch_size, i, len(X_train), "this_batch_size, i, len(X_train)")
+      i_start, i_end = i, i+this_batch_size
+      # final batch_size of an epoch == remaining elements in X_train..
+      print("i:", i, "start:", i_start, "end:", i_end, "this_batch_size:", batch_size, "len(X_train)", len(X_train))
+      x_batch = X_train[i_start:i_end]
+      y_batch = y_train[i_start:i_end]
+      print(x_batch.shape, y_batch.shape)
 
-      #for count in range(this_batch_size):
-      x, y = horizontal_flip_50_50(X_train[i], y_train[i])
-      x_batch.append(x)
-      y_batch.append(y)
-      count += 1
-      # yield when have gathered count==batch_size images
-      print("yielding on count:", count, "i:", i, "with this_batch_size:", this_batch_size)
-      # TODO: check for off-by-one
-      if (count == this_batch_size):
-        # yield (np.asarray(x_batch), np.asarray(y_batch))
-        x_batch, y_batch = np.asarray(x_batch), np.asarrray(y_batch)
-        print(x_batch.shape, y_batch.shape)
-        yield (x_batch, y_batch)
-      count = 0
-      x_batch, y_batch = [], []
+      for i in range(this_batch_size):
+        x_batch[i], y_batch[i] = horizontal_flip_50_50(X_train[i], y_train[i])
 
+      # yield this batch
+      print("\nyielding on i_start to i_end", i_start, i_end, "with this_batch_size:", this_batch_size)
+      # yield (np.asarray(x_batch), np.asarray(y_batch))
+      # x_batch, y_batch = np.asarray(x_batch), np.asarrray(y_batch)
+      print(x_batch.shape, y_batch.shape, ": shapes, i=", i)
+      yield (x_batch, y_batch)
+      i = i_end
       # rem: once i reaches the end of the X_train array, an exception occurs
-      #i += 1
 
 
   # randomly flip half the dataset horizontally
