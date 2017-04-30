@@ -506,83 +506,64 @@ def main(_):
 
   ## Data Augmentation
   def custom_data_generator(X_train, y_train, batch_size):
-    # ImageDataGenerator
+    # based on keras.image.ImageDataGenerator()
     #  ..Generate minibatches of image data with real-time data augmentation
-    #    IDG.flow RETURNS a numpy_iterator : yields a batch of images,
-    #      or batch of images AND batch of labels,
-    #      depending if labels was passed in or not (ie self.y=None)
-    #
 
-    # get an X_image
-    # optionally (randomly) flip it
-    # if flipped:
-    #   y[i] = -y[i]
-    # else:
-    #   y[i] = y[i]
-    # since X is shuffled, then I can simply return the next i
-    #   if i is the index yielded/saved at each generator call
-    # generator is exhausted at end of i's (ie samples_per_epoch)
+    # current augmentation:
+    # flip half the images in each batch (hence the X_train) horizontally,
+    #   and adjust steering angle accordingly
+
     # if only want a percentage of the x's with a zero value, then
     # samples_per_epoch will be:
     # number_samples_where_y_is_NOT_zero +
     #      percentage_0s_to_use * number_of_samples_where_y_IS_zero
-    # question is, does this gen_func return 1_image/label, or batch_images/labels
-    # I think flow yields batch-size images,
-    #   this yields a single image,
-    #   fit_gen yields epoch's worth of images via epochs/batch-size calls
 
-     # x is a single image, so it doesn't have image number at index 0
-    # img_row_axis = self.row_axis - 1\
-
-    # row_axis=1, col_axis=2, channel_axis=0
-    # wrong, that would be for theano.
-    # tf, items
     image_row_axis, img_col_axis, channel_axis = (0,1,2)
 
     def flip_axis(x, axis):
-      print("in flip_axis..")
       x = np.asarray(x).swapaxes(axis, 0)
       x = x[::-1, ...]
       x = x.swapaxes(0, axis)
       return x
 
     def horizontal_flip_50_50(image, label):
-      print("\nin horizontal_flip_50_50..")
-      print("input  image, label:", image[0][0][0], label)
+      error_checking_input = (image[0][0][0], label)
       if np.random.random() < 0.5:
         image = flip_axis(image, img_col_axis)
         if label != 0:
           label = -1 * label
-        print("flipped", image[0][-1][0], label)
+        assert((image[0][-1][0], label) == (error_checking_input[0], -error_checking_input[1]))
       else:
-        print("not flipped:", image[0][0][0], label)
+        assert( (image[0][0][0], label) == error_checking_input)
       return image, label
 
-    print("\nin custom_data_generator..")
     # TODO: re-shuffle X_train at each epoch?
     x_batch, y_batch = [], []
     i=0
-    # while i<len(X_train)
-    while (True):
+    # while (True):
+    while i < len(X_train):
+      # final batch_size of an epoch == remaining elements in X_train..
       this_batch_size = min(batch_size, len(X_train)-i)
       i_start, i_end = i, i+this_batch_size
-      # final batch_size of an epoch == remaining elements in X_train..
-      print("i:", i, "start:", i_start, "end:", i_end, "this_batch_size:", batch_size, "len(X_train)", len(X_train))
+      # print("i:", i, "start:", i_start, "end:", i_end, "this_batch_size:", batch_size, "len(X_train)", len(X_train))
       x_batch = X_train[i_start:i_end]
       y_batch = y_train[i_start:i_end]
-      print(x_batch.shape, y_batch.shape)
+      # print(x_batch.shape, y_batch.shape)
 
+      # horizontally flip half the batch at random, and adjust steering angle accordingly
       for i in range(this_batch_size):
         x_batch[i], y_batch[i] = horizontal_flip_50_50(X_train[i], y_train[i])
 
       # yield this batch
-      print("\nyielding on i_start to i_end", i_start, i_end, "with this_batch_size:", this_batch_size)
-      # yield (np.asarray(x_batch), np.asarray(y_batch))
-      # x_batch, y_batch = np.asarray(x_batch), np.asarrray(y_batch)
-      print(x_batch.shape, y_batch.shape, ": shapes, i=", i)
+      # print("\nyielding on i_start to i_end", i_start, i_end, "with this_batch_size:", this_batch_size)
+      # print(x_batch.shape, y_batch.shape, ": shapes, i=", i)
       yield (x_batch, y_batch)
       i = i_end
-      # rem: once i reaches the end of the X_train array, an exception occurs
+    print("\nend of dataset reached..", i, "\n")
+      # rem: once i reaches the end of the X_train array, an exception ought occur
+      # at that point, 1 epoch would have finished, and it should start over, with a new instance of custom_data_generator
+    # does fit_generator reset my generator at each epoch?
+    # or dp I manually need to do this somehow ??
 
 
   # randomly flip half the dataset horizontally
@@ -591,7 +572,7 @@ def main(_):
 
   # fits the model on batches with real-time data augmentation:
   #model.fit_generator(imageDataGenerator(X_train, y_train, batch_size=batch_size),
-  model.fit_generator(custom_data_generator(X_train, y_train, batch_size=batch_size),
+  model.fit_generator(imageDataGenerator,
                       samples_per_epoch=X_train.shape[0],
                       nb_epoch=EPOCHS,
                       validation_data = (X_valid, y_valid),
