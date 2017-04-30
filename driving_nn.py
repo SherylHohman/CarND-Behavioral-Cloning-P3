@@ -272,9 +272,7 @@ def preprocess(X_train):
         print(matrix.shape, "after Normalization\n")
     return matrix
 
-
   # begin preprocessing
-
   if len(X_train)>1:
     # training: give feedback on progress
     verbose = True
@@ -366,6 +364,97 @@ def stratified_dataset_split(X_all, y_all, training_proportion=0.80):
     return (np.asarray(X_train_new), np.asarray(y_train_new),
             np.asarray(X_valid_new), np.asarray(y_valid_new))
 
+## Generators and Data Augmentation
+
+def batch_generator(X_dataset, y_dataset=None, batch_size):
+  from sklearn.utils import shuffle
+  # takes in training or validation set
+  # yeilds a batch of images from the dataset
+  # Note: All batches must be of batch_size.
+  # can't send out a smaller batch that's the "leftovers" of the entire dataset.
+
+  # if only want a percentage of the x's with a zero value, then
+  # samples_per_epoch will be:
+  # number_samples_where_y_is_NOT_zero +
+  #      percentage_0s_to_use * number_of_samples_where_y_IS_zero
+
+  print(X_dataset.shape, "\ndata shape, entering validation generator")
+  assert len(X_dataset) >= batch_size "dataset must be larger than batch_size"
+  # in case the incoming dataset hadn't been shuffled already
+  X_dataset, y_dataset = shuffle(X_dataset, y_dataset)
+
+  # number of times "delt" a batch from this "deck" (shuffled dataset)
+  d=0
+  x_batch, y_batch = [], []
+  while (True):
+    i_start, i_end = d*batch_size, (d+1)*batch_size
+    # print("d:", d, "start:", i_start, "end:", i_end, "batch_size", batch_size, "len(X_dataset)", len(X_dataset))
+
+    x_batch = X_dataset[i_start:i_end]
+    y_batch = y_dataset[i_start:i_end]
+
+    yield (x_batch, y_batch)
+    d = i_end
+
+    # cannot dish out batch smaller than batch_size when using generators
+    if (d+1)*batchsize > len(X_dataset):
+      # throw leftover "cards in deck" out, shuffle and start "dealing" from a fresh "deck"
+      X_dataset, y_dataset = shuffle(X_dataset, y_dataset)
+      d = 0
+# -----------------------------
+
+## Data Augmentation
+# randomly flip half the dataset horizontally
+def generate_augmented_batch(X_train, y_train=None, batch_size):
+  from sklearn.utils import shuffle
+
+  # based on keras.image.ImageDataGenerator()
+  #  ..Generate minibatches of image data with real-time data augmentation
+
+  # current augmentation:
+  # flip half the images in each batch (hence half of X_train) horizontally,
+  # adjust steering angle accordingly
+
+  # if only want a percentage of the x's with a zero value, then
+  # samples_per_epoch will be:
+  # number_samples_where_y_is_NOT_zero +
+  #      percentage_0s_to_use * number_of_samples_where_y_IS_zero
+
+  image_row_axis, img_col_axis, channel_axis = (0,1,2)
+
+  def flip_axis(x, axis):
+    x = np.asarray(x).swapaxes(axis, 0)
+    x = x[::-1, ...]
+    x = x.swapaxes(0, axis)
+    return x
+
+  def horizontal_flip_50_50(image, label):
+    error_checking_input = (image[0][0][0], label)
+    if np.random.random() < 0.5:
+      image = flip_axis(image, img_col_axis)
+      if label != 0:
+        label = -1 * label
+      assert((image[0][-1][0], label) == (error_checking_input[0], -error_checking_input[1]))
+    else:
+      assert( (image[0][0][0], label) == error_checking_input)
+    return image, label
+
+  # set batch generator for training data
+  get_batch = batch_generator(X_train, y_train, batch_size)
+
+  # augment current batch of images
+  while (True):
+    x_batch_aug, y_batch_aug = [], []
+    X_batch, y__batch = get_batch
+    for i in range(batch_size):
+      x, y = horizontal_flip_50_50(X_batch[i], y_batch[i])
+      x_batch_aug.append(x)
+      y_batch_aug.append(y)
+    yield (x_batch_aug, y_batch_aug)
+    # break
+
+# -----------------------------
+
 
 def main(_):
 
@@ -445,21 +534,20 @@ def main(_):
                  'nb_col': filter_size,
                  'subsample': strides,
                  'activation': 'relu',
-                 'input_shape': image_input_shape
+                 'input_shape': image_input_shape  # only for first conv layer !!
                 }
 
   # (66,200,3)->(31,98,24)
   conv_params['nb_filter'] = num_output_filters = 24
   model.add(Convolution2D(**conv_params))
-  #model.add(Convolution2D(input_shape=image_input_shape, stride=2, activation='relu'))
   # input_shape is only ever passed in to the first layer
   del conv_params['input_shape']
 
-  # #  (31,98,24)->(14,47,36)
+  # (31,98,24)->(14,47,36)
   conv_params['nb_filter'] = num_output_filters = 36
   model.add(Convolution2D(**conv_params))
 
-  # #  (14,47,36)->(5,22,48)
+  # (14,47,36)->(5,22,48)
   conv_params['nb_filter'] = num_output_filters = 48
   model.add(Convolution2D(**conv_params))
 
@@ -471,6 +559,7 @@ def main(_):
   conv_params['nb_col'] = filter_size
   conv_params['subsample'] = strides
   conv_params['nb_filter'] = num_output_filters
+
   # ( 5,22,48)->( 3,20,64)
   model.add(Convolution2D(**conv_params))
   #  ( 3,20,64)->( 1,18,64)
@@ -479,11 +568,11 @@ def main(_):
   #  ( 1,18,64)->(1164)
   model.add(Flatten())
 
-  # 3 fully connected layers
-  #  (1164) -> (100)
+  # 3 (looks like 4 to me??) fully connected layers
+  #  (1164) -> (100) ... (1)
   model.add(Dense(100))
   model.add(Dense(50))
-  #model.add(Dense(10))  #?? 1 too many dense layers ?
+  model.add(Dense(10))
   model.add(Dense(1))
   # no softmax or maxarg on regression network; just the raw output value
 
@@ -494,129 +583,63 @@ def main(_):
   ## SAVE model: h5 format for running in autonomous mode on simulator
   model_timestamp = time.strftime("%y%m%d_%H%M")
   path_to_saved_models = './trained_models/'
-  model_filename = 'model_' + model_timestamp + '_' + SUBDIR +'.h5'
+  model_filename = 'model_' + model_timestamp + '_' + SUBDIR + '.h5'
 
   ## TRAIN Model
   print("Training Model..")
 
   # generator_fit does not have an argument "validation_split" to automatically separate out validation data, so must do this myself
-  #   either a validation_set generator, or a (X_valid, y_valid) tuple MUST be passed in to the "fit_generator" function as validation_data=xx)
   X_valid, y_valid = [], []
   print(X_train.shape, y_train.shape, ": before split, train shapes")
-  # split X_train, y_train into training and validation sets
   X_train, y_train, X_valid, y_valid = stratified_dataset_split(X_train, y_train, training_proportion=0.8)
   print(X_train.shape, y_train.shape, X_valid.shape, y_valid.shape, ": after split train and valid data")
 
-  # at each epoch, save the best model so far, as defined by lowest validation loss
+  # at each epoch, save the best model so far, defined by lowest validation loss
+  # stop training when loss does improve
   callbacks = [
     EarlyStopping(monitor='val_loss', patience=5, verbose=1),
-    ModelCheckpoint(path_to_saved_models+model_filename, monitor='val_loss', verbose=1, save_best_only=True, save_weights_only=False, mode='auto', period=1)
+    ModelCheckpoint(path_to_saved_models + model_filename,
+                    save_best_only=True,
+                    save_weights_only=False,
+                    monitor='val_loss',
+                    mode='auto',
+                    verbose=1,
+                    period=1)
     ]
 
-  ## Data Augmentation
-  def custom_data_generator(X_train, y_train, batch_size):
-    from sklearn.utils import shuffle
+  # imageDataGen = ImageDataGenerator(horizontal_flip=True)
+  # built in "ImageDatagenerator" generates augmented images,
+  # but can't update labels, hence must write a custom generator function for this
 
-    # based on keras.image.ImageDataGenerator()
-    #  ..Generate minibatches of image data with real-time data augmentation
+  test_data_generator  = generate_augmented_batch(X_train, y_train, batch_size)
+  validation_generator = batch_generator(X_valid, y_valid, batch_size)
 
-    # current augmentation:
-    # flip half the images in each batch (hence the X_train) horizontally,
-    #   and adjust steering angle accordingly
+  # truncate number training samples/epoch to be a  multiple of batch_size
+  samples_per_epoch = (X_train.shape[0]//batch_size) * batch_size
+  assert (samples_per_epoch % batch_size == 0), \
+          "'samples_per_epoch' must be a multiple of batch_size"
 
-    # if only want a percentage of the x's with a zero value, then
-    # samples_per_epoch will be:
-    # number_samples_where_y_is_NOT_zero +
-    #      percentage_0s_to_use * number_of_samples_where_y_IS_zero
+  # truncate number of validation samples/epoch to be a multiple of batch_size
+  nb_val_samples = (X_valid.shape[0]//batch_size) * batch_size
+  assert (nb_val_samples % batch_size == 0), \
+          "'nb_val_samples' must be a multiple of batch_size"
 
-    image_row_axis, img_col_axis, channel_axis = (0,1,2)
-
-    def flip_axis(x, axis):
-      x = np.asarray(x).swapaxes(axis, 0)
-      x = x[::-1, ...]
-      x = x.swapaxes(0, axis)
-      return x
-
-    def horizontal_flip_50_50(image, label):
-      error_checking_input = (image[0][0][0], label)
-      if np.random.random() < 0.5:
-        image = flip_axis(image, img_col_axis)
-        if label != 0:
-          label = -1 * label
-        assert((image[0][-1][0], label) == (error_checking_input[0], -error_checking_input[1]))
-      else:
-        assert( (image[0][0][0], label) == error_checking_input)
-      return image, label
-
-    # def generate_batches(X_train, y_train, batch_size):
-    # TODO: re-shuffle X_train at each epoch?
-    print(X_train.shape, "\ntrain shape, entering custom generator")
-    X_train, y_train = shuffle(X_train, y_train)
-    x_batch, y_batch = [], []
-    i=0
-    while (True):
-      # print("how do I reset X_train / generator for new epoch?")
-      # while i < len(X_train):
-
-      # final batch_size of an epoch == remaining elements in X_train..
-      this_batch_size = min(batch_size, len(X_train)-i)
-      i_start, i_end = i, i+this_batch_size
-      # print("i:", i, "start:", i_start, "end:", i_end, "this_batch_size:", batch_size, "len(X_train)", len(X_train))
-      x_batch = X_train[i_start:i_end]
-      y_batch = y_train[i_start:i_end]
-      # print(x_batch.shape, y_batch.shape)
-
-      # horizontally flip half the batch at random, and adjust steering angle accordingly
-      for i in range(this_batch_size):
-        x_batch[i], y_batch[i] = horizontal_flip_50_50(X_train[i], y_train[i])
-
-      # yield this batch
-      # print("\nyielding on i_start to i_end", i_start, i_end, "with this_batch_size:", this_batch_size)
-      # print(x_batch.shape, y_batch.shape, ": shapes, i=", i)
-      yield (x_batch, y_batch)
-      i = i_end
-      if i >= len(X_train):
-        # print("\nend of dataset reached..", i, "\n")
-        # new epoch, reset dataset, start again
-        X_train, y_train = shuffle(X_train, y_train)
-        i = 0
-
-      # rem: once i reaches the end of the X_train array, an exception ought occur
-      # at that point, 1 epoch would have finished, and it should start over, with a new instance of custom_data_generator
-      # does fit_generator reset my generator at each epoch?
-      # or dp I manually need to do this somehow ??
-      # break
-
-      # generate data for EPOCHS epochs
-      # for e in range(EPOCHS):
-      #   new_data = generate_batches(X_train, y_train, batch_size)
-      #   yield new_data()  #???
-      # print("\n end of EPOCHS reached. no more data to generate.\n")
-
-      # generate_batches(X_train, y_train, batch_size)
-
-  # -----------------------------
-
-  # randomly flip half the dataset horizontally
-
-  # built in "ImageDatagenerator" generates training data, but can't change labels
-  # imageDataGen       = ImageDataGenerator(horizontal_flip=True)
-  # hence must create my own generator function
-  imageDataGenerator = custom_data_generator(X_train, y_train, batch_size)
-
-  # fits the model on batches with real-time data augmentation:
-  #model.fit_generator(imageDataGenerator(X_train, y_train, batch_size=batch_size),
-
-  history = model.fit_generator(imageDataGenerator,
-                      samples_per_epoch = X_train.shape[0],
-                      nb_epoch=EPOCHS,
-                      validation_data = (X_valid, y_valid),
+  history = model.fit_generator( nb_epoch=EPOCHS,
+                      generator = test_data_generator,
+                      samples_per_epoch = samples_per_epoch,
+                      validation_data = validation_generator,
+                      nb_val_samples  = nb_val_samples
                       callbacks=callbacks)
 
-  # model.fit(imageDataGenerator,
-  #           samples_per_epoch = X_train.shape[0],
-  #           nb_epoch=EPOCHS,
-  #           validation_data = (X_valid, y_valid),
+  # history = model.fit_generator(imageDataGenerator,
+  #                       samples_per_epoch = X_train.shape[0],
+  #                       nb_epoch=EPOCHS,
+  #                       validation_data = (X_valid, y_valid),
+  #                       callbacks=callbacks)
+
+  # if not using image augmentation use this fit function instead:
+  # model.fit(X_train, y_train, shuffle=True,
+  #           validation_split=0.2, nb_epoch=EPOCHS,
   #           callbacks=callbacks)
 
   """
@@ -656,14 +679,12 @@ def main(_):
 """
 
 
-  # if no augmentation use this fit function:
-  # fit paramaters on preprocessed data
-  # model.fit(X_train, y_train, shuffle=True, validation_split=0.2, nb_epoch=EPOCHS, callbacks=callbacks)
-
-
   print("\nSaving model..")
   #model.save(path_to_saved_models + model_filename)
   print("Model Saved as ", path_to_saved_models + model_filename)
+
+  print(model.summary())
+  print(history)
 
   # ------
   print(
@@ -680,7 +701,7 @@ def main(_):
      python drive.py ./trained_models/model_170422_2224_sample_training_data.h5
      python ../drive.py ./model_170417_1741_sample_training_data.h5
 
-  python drive.py {path_to_saved_models}/model_{model_timestamp}_{SUBDIR}.h5
+  python drive.py {path_to_saved_models}//model_{model_timestamp}_{SUBDIR}.h5
   '''
   )
   # (if using docker, see instructions in Udacity Lesson: "8 Running Your Network")
