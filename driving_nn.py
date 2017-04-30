@@ -300,6 +300,63 @@ def preprocess(X_train):
 
   return(X_train)
 
+def stratified_dataset_split(X_all, y_all, training_proportion=0.80):
+    import numpy as np
+    def get_indexes_for_split(y_train):
+        y_train=np.array(y_train)
+        # create buckets for steering angles: positive, negative, zero
+        buckets = ['-1', '0', '1']
+        # since buckets are known, create them all, init them all to empty sets
+        steering_angles = {}
+        for bucket in buckets:
+            steering_angles[bucket] = []
+
+        # get indexes of images with zero, positive, and negative steering angles
+        for i in range(len(y_train)):
+          if y_train[i] == 0:
+            steering_angles['0'].append(i)
+          elif y_train[i] < 0:
+            steering_angles['-1'].append(i)
+          else:
+            steering_angles['1'].append(i)
+
+        # shuffle the indexes of images in each bucket
+        for bucket in buckets:
+            np.random.shuffle(steering_angles[bucket])
+
+        # siphon off training_proportion of each list into training set;
+        #   remaining become validation set
+        training_set_indexes, validation_set_indexes = [ [], [] ]
+        for bucket in buckets:
+            num_images_in_bucket = len(steering_angles[bucket])
+            num_training = int((training_proportion * num_images_in_bucket) // 1)
+            training_set_indexes   += steering_angles[bucket][:num_training]
+            validation_set_indexes += steering_angles[bucket][num_training:]
+        num_train= len(training_set_indexes)
+        num_valid= len(validation_set_indexes)
+        print(num_train/len(y_train), num_valid/len(y_train), num_train, num_valid, num_train+num_valid, len(y_train))
+        return training_set_indexes, validation_set_indexes
+
+    # get indexes to use for training and validation sets
+    training_indexes, validation_indexes = get_indexes_for_split(y_all)
+    # create new training set
+    X_train_new, y_train_new = ([],[])
+    for training_index in training_indexes:
+            X_train_new.append(X_all[training_index])
+            y_train_new.append(y_all[training_index])
+    # create validation set
+    X_valid_new, y_valid_new = ([], [])
+    for validation_index in validation_indexes :
+            X_valid_new.append(X_all[validation_index])
+            y_valid_new.append(y_all[validation_index])
+    # verification
+    assert( len(X_train_new) == len(y_train_new) )
+    assert( len(X_valid_new) == len(y_valid_new) )
+    print("train: ", len(X_train_new)/len(X_all), "valid", len(X_valid_new)/len(X_all) )
+
+    # return training and validation sets as numpy arrays
+    return np.asarray(X_train_new), np.asarray(y_train_new), np.asarray(X_valid_new), np.asarray(y_valid_new)
+
 
 def main(_):
 
@@ -434,10 +491,12 @@ def main(_):
   print("Training Model..")
 
   # generator_fit does not have an argument "validation_split" to automatically separate out validation data, so must do this myself
-  # ( or create a validation_set generator to do this for me.
   #   either a validation_set generator, or a (X_valid, y_valid) tuple MUST be passed in to the "fit_generator" function as validation_data=xx)
-  from sklearn.model_selection import train_test_split
-  X_train, y_train, X_valid, y_valid = sklearn.model_selection.train_test_split(X_train, y_train, train_size=0.8, stratify=True, random_state=42)
+  X_valid, y_valid = [], []
+  print(X_train.shape, y_train.shape, "X_train, y_train")
+  # split X_train, y_train into training and validation sets
+  X_train, y_train, X_valid, y_valid = stratified_dataset_split(X_train, y_train, training_proportion=0.8)
+  print(X_train.shape, y_train.shape, X_valid.shape, y_valid.shape, "after split: X_train, y_train, X_valid, y_valid")
 
   # at each epoch, save the best model so far, as defined by lowest validation loss
   callbacks = [
@@ -446,8 +505,7 @@ def main(_):
     ]
 
   ## Data Augmentation
-  def custom_data_generator(X_train, y_train):
-
+  def custom_data_generator(X_train, y_train, batch_size):
     # ImageDataGenerator
     #  ..Generate minibatches of image data with real-time data augmentation
     #    IDG.flow RETURNS a numpy_iterator : yields a batch of images,
@@ -479,81 +537,99 @@ def main(_):
     # row_axis=1, col_axis=2, channel_axis=0
     # wrong, that would be for theano.
     # tf, items
-    image_row_axis=0, img_col_axis=1, channel_axis=2
+    image_row_axis, img_col_axis, channel_axis = (0,1,2)
 
     def flip_axis(x, axis):
-    x = np.asarray(x).swapaxes(axis, 0)
-    x = x[::-1, ...]
-    x = x.swapaxes(0, axis)
-    return x
+      print("in flip_axis..")
+      x = np.asarray(x).swapaxes(axis, 0)
+      x = x[::-1, ...]
+      x = x.swapaxes(0, axis)
+      return x
 
     def horizontal_flip_50_50(image, label):
+      print("in horizontal_flip_50_50..")
       if np.random.random() < 0.5:
-        image = flip_axis(x, img_col_axis)
-        if label !=0:
+        image = flip_axis(image, img_col_axis)
+        if label != 0:
           label = -1 * label
         return image, label
 
-
+    print("\nin custom_data_generator..")
     x_batch, y_batch = [], []
-    i=0
-    for i in range(len(X_train))
-      for count in range(batch_size):
-        x, y = horizontal_flip_50_50(X_train[i], y_train[i])
-          x_batch.append(x)
-          y_batch.append(y)
+    #i=0
+    #while (True):
+    count = 0
+    # TODO: re-shuffle ?
+    for i in range(len(X_train)):
+      # final batch_size of an epoch == remaining elements in X_train..
+      this_batch_size = min(batch_size, len(X_train)-i)
+      print(this_batch_size, i, len(X_train), "this_batch_size, i, len(X_train)")
+
+      #for count in range(this_batch_size):
+      x, y = horizontal_flip_50_50(X_train[i], y_train[i])
+      x_batch.append(x)
+      y_batch.append(y)
+      count += 1
       # yield when have gathered count==batch_size images
-      yield x_batch, y_batch
-      # rem, once i reaches the end of the X_train array,
-      #  an exception will occur
-      i += 1
+      print("yielding on count:", count, "i:", i, "with this_batch_size:", this_batch_size)
+      # TODO: check for off-by-one
+      if (count == this_batch_size):
+        # yield (np.asarray(x_batch), np.asarray(y_batch))
+        x_batch, y_batch = np.asarray(x_batch), np.asarrray(y_batch)
+        print(x_batch.shape, y_batch.shape)
+        yield (x_batch, y_batch)
+      count = 0
+      x_batch, y_batch = [], []
+
+      # rem: once i reaches the end of the X_train array, an exception occurs
+      #i += 1
+
 
   # randomly flip half the dataset horizontally
   # imageDataGen       = ImageDataGenerator(horizontal_flip=True)
-  imageDataGenerator = custom_data_generator(X_train, y_train)
+  imageDataGenerator = custom_data_generator(X_train, y_train, batch_size)
 
   # fits the model on batches with real-time data augmentation:
-  model.fit_generator(imageDataGenerator.flow(X_train, y_train,
-                                              batch_size=batch_size),
+  #model.fit_generator(imageDataGenerator(X_train, y_train, batch_size=batch_size),
+  model.fit_generator(custom_data_generator(X_train, y_train, batch_size=batch_size),
                       samples_per_epoch=X_train.shape[0],
                       nb_epoch=EPOCHS,
-                      # validation_split=0.2, # needs to be an array (below)
-                      validation_data = (X_valid, y_valid)
+                      validation_data = (X_valid, y_valid),
                       callbacks=callbacks)
 
-"""
-## from docs..
-# model_fit_generator is equivalent to:
-for e in range(epochs):
-    print('Epoch', e)
-    batches = 0
-    for x_batch, y_batch in datagen.flow(x_train, y_train, batch_size=32):
-        model.fit(x_batch, y_batch)
-        batches += 1
-        if batches >= len(x_train) / 32:
-            # we need to break the loop by hand because
-            # the generator loops indefinitely
-            break
+  """
+  ## from docs..
+  # model_fit_generator is equivalent to:
+  for e in range(epochs):
+      print('Epoch', e)
+      batches = 0
+      for x_batch, y_batch in datagen.flow(x_train, y_train, batch_size=32):
+          model.fit(x_batch, y_batch)
+          batches += 1
+          if batches >= len(x_train) / 32:
+              # we need to break the loop by hand because
+              # the generator loops indefinitely
+              break
 
-## from docs..
-fit_generator(self, generator,
-                    samples_per_epoch,
-                    nb_epoch,
-                    verbose=1,
-                    callbacks=None,
-                    validation_data=None,   **
-                    nb_val_samples=None,    **
-                    class_weight=None,
-                    max_q_size=10,
-                    nb_worker=1,
-                    pickle_safe=False,
-                    initial_epoch=0)
+  ## from docs..
+  fit_generator(self, generator,
+                      samples_per_epoch,
+                      nb_epoch,
+                      verbose=1,
+                      callbacks=None,
+                      validation_data=None,   **
+                      nb_val_samples=None,    **
+                      class_weight=None,
+                      max_q_size=10,
+                      nb_worker=1,
+                      pickle_safe=False,
+                      initial_epoch=0)
 
-                ** validation_data: this can be either
-                    - a generator for the validation data
-                    - a tuple (inputs, targets)
-                    - a tuple (inputs, targets, sample_weights).
-                   nb_val_samples: only relevant if validation_data is a     generator. number of samples to use from validation generator at the end of every epoch.
+                  ** validation_data: this can be either
+                      - a generator for the validation data
+                      - a tuple (inputs, targets)
+                      - a tuple (inputs, targets, sample_weights).
+                     nb_val_samples: only relevant if validation_data is a     generator. number of samples to use from validation generator at the end of every epoch.
 
 """
 
