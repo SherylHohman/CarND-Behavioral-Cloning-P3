@@ -302,6 +302,8 @@ def preprocess(X_train):
 
 def stratified_dataset_split(X_all, y_all, training_proportion=0.80):
     import numpy as np
+    from sklearn.utils import shuffle
+
     def get_indexes_for_split(y_train):
         y_train=np.array(y_train)
         # create buckets for steering angles: positive, negative, zero
@@ -344,18 +346,25 @@ def stratified_dataset_split(X_all, y_all, training_proportion=0.80):
     for training_index in training_indexes:
             X_train_new.append(X_all[training_index])
             y_train_new.append(y_all[training_index])
+
     # create validation set
     X_valid_new, y_valid_new = ([], [])
     for validation_index in validation_indexes :
             X_valid_new.append(X_all[validation_index])
             y_valid_new.append(y_all[validation_index])
+
     # verification
     assert( len(X_train_new) == len(y_train_new) )
     assert( len(X_valid_new) == len(y_valid_new) )
     print("train: ", len(X_train_new)/len(X_all), "valid", len(X_valid_new)/len(X_all) )
 
+    #shuffle the data !
+    X_train_new, y_train_new = shuffle(X_train_new, y_train_new)
+    X_valid_new, y_valid_new = shuffle(X_valid_new, y_valid_new)
+
     # return training and validation sets as numpy arrays
-    return np.asarray(X_train_new), np.asarray(y_train_new), np.asarray(X_valid_new), np.asarray(y_valid_new)
+    return (np.asarray(X_train_new), np.asarray(y_train_new),
+            np.asarray(X_valid_new), np.asarray(y_valid_new))
 
 
 def main(_):
@@ -496,7 +505,7 @@ def main(_):
   print(X_train.shape, y_train.shape, ": before split, train shapes")
   # split X_train, y_train into training and validation sets
   X_train, y_train, X_valid, y_valid = stratified_dataset_split(X_train, y_train, training_proportion=0.8)
-  print(X_train.shape, y_train.shape, X_valid.shape, y_valid.shape, ": after split, train and valid data")
+  print(X_train.shape, y_train.shape, X_valid.shape, y_valid.shape, ": after split train and valid data")
 
   # at each epoch, save the best model so far, as defined by lowest validation loss
   callbacks = [
@@ -506,6 +515,8 @@ def main(_):
 
   ## Data Augmentation
   def custom_data_generator(X_train, y_train, batch_size):
+    from sklearn.utils import shuffle
+
     # based on keras.image.ImageDataGenerator()
     #  ..Generate minibatches of image data with real-time data augmentation
 
@@ -540,10 +551,11 @@ def main(_):
     # def generate_batches(X_train, y_train, batch_size):
     # TODO: re-shuffle X_train at each epoch?
     print(X_train.shape, "\ntrain shape, entering custom generator")
+    X_train, y_train = shuffle(X_train, y_train)
     x_batch, y_batch = [], []
     i=0
     while (True):
-      print("how do I reset X_train / generator for new epoch?")
+      # print("how do I reset X_train / generator for new epoch?")
       # while i < len(X_train):
 
       # final batch_size of an epoch == remaining elements in X_train..
@@ -559,16 +571,16 @@ def main(_):
         x_batch[i], y_batch[i] = horizontal_flip_50_50(X_train[i], y_train[i])
 
       # yield this batch
-      print("\nyielding on i_start to i_end", i_start, i_end, "with this_batch_size:", this_batch_size)
+      # print("\nyielding on i_start to i_end", i_start, i_end, "with this_batch_size:", this_batch_size)
       # print(x_batch.shape, y_batch.shape, ": shapes, i=", i)
       yield (x_batch, y_batch)
       i = i_end
       if i >= len(X_train):
-        # start again
+        # print("\nend of dataset reached..", i, "\n")
+        # new epoch, reset dataset, start again
+        X_train, y_train = shuffle(X_train, y_train)
         i = 0
-        #shuffle X_train
-        
-      print("\nend of dataset reached..", i, "\n")
+
       # rem: once i reaches the end of the X_train array, an exception ought occur
       # at that point, 1 epoch would have finished, and it should start over, with a new instance of custom_data_generator
       # does fit_generator reset my generator at each epoch?
@@ -595,7 +607,7 @@ def main(_):
   # fits the model on batches with real-time data augmentation:
   #model.fit_generator(imageDataGenerator(X_train, y_train, batch_size=batch_size),
 
-  model.fit_generator(imageDataGenerator,
+  history = model.fit_generator(imageDataGenerator,
                       samples_per_epoch = X_train.shape[0],
                       nb_epoch=EPOCHS,
                       validation_data = (X_valid, y_valid),
@@ -668,7 +680,7 @@ def main(_):
      python drive.py ./trained_models/model_170422_2224_sample_training_data.h5
      python ../drive.py ./model_170417_1741_sample_training_data.h5
 
-  python drive.py model_{path_to_saved_models}model_{model_timestamp}_{SUBDIR}.h5
+  python drive.py {path_to_saved_models}/model_{model_timestamp}_{SUBDIR}.h5
   '''
   )
   # (if using docker, see instructions in Udacity Lesson: "8 Running Your Network")
