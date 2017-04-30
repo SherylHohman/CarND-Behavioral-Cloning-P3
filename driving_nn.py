@@ -493,10 +493,10 @@ def main(_):
   # generator_fit does not have an argument "validation_split" to automatically separate out validation data, so must do this myself
   #   either a validation_set generator, or a (X_valid, y_valid) tuple MUST be passed in to the "fit_generator" function as validation_data=xx)
   X_valid, y_valid = [], []
-  print(X_train.shape, y_train.shape, "X_train, y_train")
+  print(X_train.shape, y_train.shape, ": before split, train shapes")
   # split X_train, y_train into training and validation sets
   X_train, y_train, X_valid, y_valid = stratified_dataset_split(X_train, y_train, training_proportion=0.8)
-  print(X_train.shape, y_train.shape, X_valid.shape, y_valid.shape, "after split: X_train, y_train, X_valid, y_valid")
+  print(X_train.shape, y_train.shape, X_valid.shape, y_valid.shape, ": after split, train and valid data")
 
   # at each epoch, save the best model so far, as defined by lowest validation loss
   callbacks = [
@@ -537,11 +537,15 @@ def main(_):
         assert( (image[0][0][0], label) == error_checking_input)
       return image, label
 
+    # def generate_batches(X_train, y_train, batch_size):
     # TODO: re-shuffle X_train at each epoch?
+    print(X_train.shape, "\ntrain shape, entering custom generator")
     x_batch, y_batch = [], []
     i=0
-    # while (True):
-    while i < len(X_train):
+    while (True):
+      print("how do I reset X_train / generator for new epoch?")
+      # while i < len(X_train):
+
       # final batch_size of an epoch == remaining elements in X_train..
       this_batch_size = min(batch_size, len(X_train)-i)
       i_start, i_end = i, i+this_batch_size
@@ -555,28 +559,53 @@ def main(_):
         x_batch[i], y_batch[i] = horizontal_flip_50_50(X_train[i], y_train[i])
 
       # yield this batch
-      # print("\nyielding on i_start to i_end", i_start, i_end, "with this_batch_size:", this_batch_size)
+      print("\nyielding on i_start to i_end", i_start, i_end, "with this_batch_size:", this_batch_size)
       # print(x_batch.shape, y_batch.shape, ": shapes, i=", i)
       yield (x_batch, y_batch)
       i = i_end
-    print("\nend of dataset reached..", i, "\n")
+      if i >= len(X_train):
+        # start again
+        i = 0
+        #shuffle X_train
+        
+      print("\nend of dataset reached..", i, "\n")
       # rem: once i reaches the end of the X_train array, an exception ought occur
       # at that point, 1 epoch would have finished, and it should start over, with a new instance of custom_data_generator
-    # does fit_generator reset my generator at each epoch?
-    # or dp I manually need to do this somehow ??
+      # does fit_generator reset my generator at each epoch?
+      # or dp I manually need to do this somehow ??
+      # break
 
+      # generate data for EPOCHS epochs
+      # for e in range(EPOCHS):
+      #   new_data = generate_batches(X_train, y_train, batch_size)
+      #   yield new_data()  #???
+      # print("\n end of EPOCHS reached. no more data to generate.\n")
+
+      # generate_batches(X_train, y_train, batch_size)
+
+  # -----------------------------
 
   # randomly flip half the dataset horizontally
+
+  # built in "ImageDatagenerator" generates training data, but can't change labels
   # imageDataGen       = ImageDataGenerator(horizontal_flip=True)
+  # hence must create my own generator function
   imageDataGenerator = custom_data_generator(X_train, y_train, batch_size)
 
   # fits the model on batches with real-time data augmentation:
   #model.fit_generator(imageDataGenerator(X_train, y_train, batch_size=batch_size),
+
   model.fit_generator(imageDataGenerator,
-                      samples_per_epoch=X_train.shape[0],
+                      samples_per_epoch = X_train.shape[0],
                       nb_epoch=EPOCHS,
                       validation_data = (X_valid, y_valid),
                       callbacks=callbacks)
+
+  # model.fit(imageDataGenerator,
+  #           samples_per_epoch = X_train.shape[0],
+  #           nb_epoch=EPOCHS,
+  #           validation_data = (X_valid, y_valid),
+  #           callbacks=callbacks)
 
   """
   ## from docs..
