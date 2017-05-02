@@ -1,8 +1,8 @@
-# neural network for behavioural cloning driving behaviour that was captured in driving_log.csv
-# reads training data from driving_log.csv
-# trains a neural network from that data
-# saves trained model as model.h5
-# model.h5 can then be used to autonomously drive the car in the simulator that was used to produce the training data.
+# neural network for behavioural cloning driving samples that were captured in driving_log.csv
+  # reads training data from driving_log.csv
+  # trains a neural network from that data
+  # saves trained model as model.h5
+  # model.h5 can then be used to autonomously drive the car in the simulator that produced the training data.
 
 # Read data from CSV file
 import csv
@@ -29,8 +29,8 @@ pickle_default = ''
 flags.DEFINE_string('subdir', subdir_default, "subdir that training data is stored in, relative to ./data/")
 flags.DEFINE_string('epochs', epochs_default, "EPOCHS")
 # if already preprocessed this data, skip parsing raw data, and skip preprocessing
-# by supplying the base name of a pnz file (yep, pickle didn't work on np.array)
-# flag name remains
+# by supplying the base name of a pnz file
+#   (yep, pickle didn't work on np.array), but the flag name remains
 flags.DEFINE_string('pickle', pickle_default, "preprocessed data file to read, relative to ./data/ (omit the '.pnz' filetype suffix")
 
 
@@ -134,15 +134,15 @@ def load_data(SUBDIR):
   return X_train, y_train
 
 def preprocess(X_train):
-  # takes in a list or array of images
-  # ie: [image] - list with a single image,
+  # takes in an array of images
+  # ie: [image] - array with a single image,
   #     if live preprocessing a simulator image in autonomous mode
   # or: X_train - array of images, if training
 
   def crop_and_scale_images(images):
     #takes in an array of images: ie X_train, or [image] (as np.array, not list)
 
-    # # Architecture assumes image sizes (66x200x3)
+    # # Architecture built for images sized: (66 x 200 x 3)
     if verbose:
       print("cropping and scaling images..")
       print(images.shape, "before crop and resize")
@@ -171,15 +171,17 @@ def preprocess(X_train):
 
     # interpolation
     if (input_height < basis_height) and (input_width < basis_width):
-      interpolation = cv2.INTER_AREA    # best for downsampling
+      # best for downsampling
+      interpolation = cv2.INTER_AREA
     else:
-      interpolation = cv2.INTER_LINEAR  # better(slow) upsizing=CV_INTER_CUBIC
+      # better(slow) upsizing=CV_INTER_CUBIC
+      interpolation = cv2.INTER_LINEAR
 
     # magic numbers to achieve NVidia's final shape
-    #   based on manual inspection of a (160, 320) image
+    #   based on manual inspection of (160, 320) images
     basis_hood_crop = 25
     # magic number to minimize stretching without cropping from sides
-    basis_top_crop2_minimize_stretch = 29  # (1.606 x 1.6); 36 for (1.5x1.6
+    basis_top_crop2_minimize_stretch = 29  # 29 --> (1.606 x 1.6); 36-->(1.5x1.6)
       # can crop from L and R to avoid stretching image
       # however, image stretching may be preferred to cropping L and R pixels..
     # maximum crop to horizon is perhaps about 25-30% of input image
@@ -204,8 +206,8 @@ def preprocess(X_train):
     #npx_crop_from_top   = min(avail_y, min_distortion_crop)  # add #1 and/or #2
     npx_crop_from_top = min(avail_y, max_horizon_crop)
 
-    # want to crop sides, to achieve final aspect ratio without stretching..
-    #   change below to not be zero
+    # IF want to crop sides, to achieve final aspect ratio without stretching,
+    #   ..change below accordingly
     npx_crop_from_left = npx_crop_from_right = 0
 
     if verbose:
@@ -219,15 +221,15 @@ def preprocess(X_train):
     x_start = npx_crop_from_left
     x_end   = input_width  - npx_crop_from_right + 1
 
-    # "images" array expects input_shaped images; so,
-    # must store resized images to new list/array
+    # store resized images to new list (images array requires input_shaped images)
     resized=[]
     for image in images:
       # crop
       image = image[y_start:y_end, x_start:x_end, :]
       # scale to (66,200)
-      # image stretches if cropped image isn't same aspect ratio as final
-      # It's fine to stretch the image, I think - as long as the automated driving images are stretched in the same manner as the training images
+      #   Note:image stretches if cropped image isn't same aspect ratio as final
+      #   It's fine to stretch the image, I think - as long as the automated
+      #   driving images are stretched in the same manner as the training images
       image = cv2.resize(image, dsize=(final_width, final_height), interpolation=interpolation)
       resized.append(image)
     resized = np.asarray(resized)
@@ -254,9 +256,9 @@ def preprocess(X_train):
     return images_yuv
 
   def normalize_pixels(matrix):
-    # takes in an image(array) or an array of image(arrays):
+    # takes in an image(array) or an array of image(arrays) # cannot be a list
     # ie image, [images] (as an np.array), X_train
-    # cannot be a list
+
     if verbose:
       print("Normalizing..")
       print(matrix[0][0][0][:], ':matrix[0][0][0] :before')
@@ -304,9 +306,10 @@ def stratified_dataset_split(X_all, y_all, training_proportion=0.80):
 
     def get_indexes_for_split(y_train):
         y_train=np.array(y_train)
+
         # create buckets for steering angles: positive, negative, zero
         buckets = ['-1', '0', '1']
-        # since buckets are known, create them all, init them all to empty sets
+        # all bucket keys are known: create and init them all
         steering_angles = {}
         for bucket in buckets:
             steering_angles[bucket] = []
@@ -364,65 +367,75 @@ def stratified_dataset_split(X_all, y_all, training_proportion=0.80):
     return (np.asarray(X_train_new), np.asarray(y_train_new),
             np.asarray(X_valid_new), np.asarray(y_valid_new))
 
-## Generators and Data Augmentation
 
-def batch_generator(X_dataset, y_dataset, batch_size):
+## Generators and Data Augmentation
+def batch_generator(X_dataset, y_dataset, batch_size, p_keep=1):
   from sklearn.utils import shuffle
-  # takes in training or validation set
-  # yeilds a batch of images from the dataset
+  # receives training set, or validation set
+  # yields a batch of images from the dataset
   # Note: All batches must be of batch_size.
   # len(X_dataset) % batch_size samples will be ignored each time thru the dataset
 
-  # if only want a percentage of the x's with a zero value, then
-  # samples_per_epoch will be:
-  # number_samples_where_y_is_NOT_zero +
-  #      percentage_0s_to_use * number_of_samples_where_y_IS_zero
+  def thin_out_0_steering_angles(X_dataset, y_dataset, p_keep=1):
+    # dataset is biased to steering_angle == 0
+    # at each (shuffle of dataset), use only p_keep of them
+    assert ((p_keep >= 0) and (p_keep <= 1)), \
+            "keep probability must be in range [0,1] inclusive"
+    if p_keep == 1:
+      return X_dataset, y_dataset
 
-  dataset_type = "TRAINing data" if (len(X_dataset) >= 300) else "VALIDation data"
+    X_thinned, y_thinned = [], []
+    for i in range(len(X_dataset)):
+      if y_dataset[i] != 0:
+        X_thinned.append(X_dataset[i])
+        y_thinned.append(y_dataset[i])
+      elif np.random.random() < p_keep:
+        X_thinned.append(X_dataset[i])
+        y_thinned.append(y_dataset[i])
+    X_thinned = np.asarray(X_thinned)
+    y_thinned = np.asarray(y_thinned)
+    X_thinned, y_thinned = shuffle(X_thinned, y_thinned)
+    return (X_thinned, y_thinned)
+
+
+  #dataset_type = "TRAINing" if (len(X_dataset) >= 200) else "VALIDation"
   # print("\nentering batch_generator w/ " + dataset_type + ", presumably")
-  assert len(X_dataset) >= batch_size, \
-         "  dataset must be larger than batch_size"
 
-  # in case the incoming dataset hadn't been shuffled already
-  X_dataset, y_dataset = shuffle(X_dataset, y_dataset)
-
-  # number of times "delt" a batch from this "deck" (shuffled dataset)
+  x_data, y_data = [], []
+  # number of times "delt" a batch since reset the dataset)
   d=0
-  x_batch, y_batch = [], []
   while (True):
+    # cannot dish out a batch smaller than batch_size when using generators
+    # throw out leftover "cards in deck", and refresh
+    if (d+1)*batch_size > len(X_data):
+      # refresh the deck
+      d = 0
+      X_data, y_data = thin_out_0_steering_angles(X_dataset, y_dataset, p_keep)
+      assert len(X_data) >= batch_size, \
+             "  dataset must be larger than batch_size"
+      # need to shuffle if p_keep!=1, or not calling thin_out_0_steering_angles()
+      #X_data, y_data = shuffle(X_data, y_data)
+
+    # create new batch
     i_start, i_end = d*batch_size, (d+1)*batch_size
-    # print("d:", d, "start:", i_start, "end:", i_end, "batch_size", batch_size, "len(X_dataset)", len(X_dataset))
-
-    x_batch = X_dataset[i_start:i_end]
-    y_batch = y_dataset[i_start:i_end]
-
-    # print('  yielding from batch_generator'+dataset_type, x_batch.shape, y_batch.shape, "\n")
+    x_batch = X_data[i_start:i_end]
+    y_batch = y_data[i_start:i_end]
     yield (np.asarray(x_batch), np.asarray(y_batch))
     d = i_end
 
-    # cannot dish out a batch smaller than batch_size when using generators
-    if (d+1)*batch_size > len(X_dataset):
-      # throw leftover "cards in deck" out, shuffle and start "dealing" from a fresh "deck"
-      X_dataset, y_dataset = shuffle(X_dataset, y_dataset)
-      d = 0
 # -----------------------------
 
 ## Data Augmentation
-# randomly flip half the dataset horizontally
-def generate_augmented_batch(X_train, y_train, batch_size):
+def generate_augmented_batch(X_train, y_train, batch_size, p_keep=1):
   from sklearn.utils import shuffle
 
-  # based on keras.image.ImageDataGenerator()
-  #  ..Generate minibatches of image data with real-time data augmentation
+  # Generate mini-batches of image data with real-time data augmentation
+  #   based on keras.image.ImageDataGenerator()
 
   # current augmentation:
+  # discard (1-p_keep) zero-value steering angle images
   # flip half the images in each batch (hence half of X_train) horizontally,
   # adjust steering angle accordingly
-
-  # if only want a percentage of the x's with a zero value, then
-  # samples_per_epoch will be:
-  # number_samples_where_y_is_NOT_zero +
-  #      percentage_0s_to_use * number_of_samples_where_y_IS_zero
 
   image_row_axis, img_col_axis, channel_axis = (0,1,2)
 
@@ -438,36 +451,23 @@ def generate_augmented_batch(X_train, y_train, batch_size):
       image = flip_axis(image, img_col_axis)
       if label != 0:
         label = -1 * label
-      assert((image[0][-1][0], label) == (error_checking_input[0], -error_checking_input[1]))
+      assert((image[0][-1][0], label) == (error_checking_input[0],
+                                          error_checking_input[1] * -1))
     else:
       assert( (image[0][0][0], label) == error_checking_input)
     return image, label
 
   # set batch generator for training data
-  get_batch = batch_generator(X_train, y_train, batch_size)
+  get_batch = batch_generator(X_train, y_train, batch_size, p_keep)
 
   # augment current batch of images
-  # while (True):
   for X_batch, y_batch in get_batch:
-    # print("  X_batch, y_batch in get_batch:", X_batch.shape, y_batch.shape)
     x_batch_aug, y_batch_aug = [], []
     for i in range(batch_size):
       x, y = horizontal_flip_50_50(X_batch[i], y_batch[i])
       x_batch_aug.append(x)
       y_batch_aug.append(y)
-    # print('  yielding from generate_augmented_batch', len(x_batch_aug), len(y_batch_aug), '\n')
     yield (np.asarray(x_batch_aug), np.asarray(y_batch_aug))
-
-
-  # # augment current batch of images
-  # while (True):
-  #   x_batch_aug, y_batch_aug = [], []
-  #   X_batch, y_batch = get_batch
-  #   for i in range(batch_size):
-  #     x, y = horizontal_flip_50_50(X_batch[i], y_batch[i])
-  #     x_batch_aug.append(x)
-  #     y_batch_aug.append(y)
-  #   yield (x_batch_aug, y_batch_aug)
 
 # -----------------------------
 
@@ -491,6 +491,7 @@ def main(_):
     print(NPZ_FILE, ": reading preprocessed data file")
   print()
 
+  # if flag did not supply a preprocessed data file (NPZ)..
   if NPZ_FILE == "":
     # load raw training data
     X_train_ORIG, y_train_ORIG = load_data(SUBDIR)
@@ -523,7 +524,7 @@ def main(_):
   # sample cropped/resized images (center, left, right)
   # distribution of steering angles (see how dist changes with augmentation)
   # - orig data, center camera only
-  # - plus left, right cameras after steering compenation
+  # - plus left, right cameras after steering compensation
   # - sample images at max -1, +1 steering angles
   # - plus augmentation added steering angles
   # examples of augmented data
@@ -590,7 +591,6 @@ def main(_):
   model.add(Dense(50))
   model.add(Dense(10))
   model.add(Dense(1))
-  # no softmax or maxarg on regression network; just the raw output value
 
   # Define Loss function, and Optimization function
   # for regression: use mse. no cross_entropy; no softmax.
@@ -599,24 +599,23 @@ def main(_):
   ## SAVE model: h5 format for running in autonomous mode on simulator
   model_timestamp = time.strftime("%y%m%d_%H%M")
   path_to_saved_models = './trained_models/'
-  model_filename = 'model_' + model_timestamp + '_' + SUBDIR + '.h5'
+  model_filename_base = 'model_' + model_timestamp + '_' + SUBDIR
+  # file extension
+  ext = '.h5'
+  # ModelCheckpoint can write val_loss to the filename
+  filepath = path_to_saved_models + model_filename_base + "_{val_loss:.4f}" + ext
 
   print(model.summary())
 
   ## TRAIN Model
   print("Training Model..")
 
-  # generator_fit does not have an argument "validation_split" to automatically separate out validation data, so must do this myself
   X_valid, y_valid = [], []
-  print(X_train.shape, y_train.shape, ": before split, train shapes")
   X_train, y_train, X_valid, y_valid = stratified_dataset_split(X_train, y_train, training_proportion=0.8)
-  print(X_train.shape, y_train.shape, X_valid.shape, y_valid.shape, ": after split train and valid data\n")
 
-  # at each epoch, save the best model so far, defined by lowest validation loss
-  # stop training when loss does improve
   callbacks = [
-    EarlyStopping(monitor='val_loss', patience=5, verbose=1),
-    ModelCheckpoint(path_to_saved_models + model_filename,
+    EarlyStopping(monitor='val_loss', patience=3, verbose=1),
+    ModelCheckpoint(filepath=filepath,
                     save_best_only=True,
                     save_weights_only=False,
                     monitor='val_loss',
@@ -625,14 +624,11 @@ def main(_):
                     period=1)
               ]
 
-  # imageDataGen = ImageDataGenerator(horizontal_flip=True)
-  # built in "ImageDatagenerator" generates augmented images,
-  # but can't update labels, hence must write a custom generator function for this
+  # custom data generators
+  test_data_generator  = generate_augmented_batch(X_train, y_train, batch_size, p_keep=0.25)
+  validation_generator = batch_generator(X_valid, y_valid, batch_size, p_keep=0.25)
 
-  test_data_generator  = generate_augmented_batch(X_train, y_train, batch_size)
-  validation_generator = batch_generator(X_valid, y_valid, batch_size)
-
-  # truncate number training samples/epoch to be a  multiple of batch_size
+  # truncate number training samples/epoch to be a multiple of batch_size
   samples_per_epoch = (X_train.shape[0]//batch_size) * batch_size
   assert (samples_per_epoch % batch_size == 0), \
           "'samples_per_epoch' must be a multiple of batch_size"
@@ -650,68 +646,28 @@ def main(_):
                                 nb_val_samples  = nb_val_samples,
                                 callbacks = callbacks)
 
-  # history = model.fit_generator(imageDataGenerator,
-  #                       samples_per_epoch = X_train.shape[0],
-  #                       nb_epoch=EPOCHS,
-  #                       validation_data = (X_valid, y_valid),
-  #                       callbacks=callbacks)
-
   # if not using image augmentation use this fit function instead:
   # model.fit(X_train, y_train, shuffle=True,
   #           validation_split=0.2, nb_epoch=EPOCHS,
   #           callbacks=callbacks)
 
-  """
-  ## from docs..
-  # model_fit_generator is equivalent to:
-  for e in range(epochs):
-      print('Epoch', e)
-      batches = 0
-      for x_batch, y_batch in datagen.flow(x_train, y_train, batch_size=32):
-          model.fit(x_batch, y_batch)
-          batches += 1
-          if batches >= len(x_train) / 32:
-              # we need to break the loop by hand because
-              # the generator loops indefinitely
-              break
 
-  ## from docs..
-  fit_generator(self, generator,
-                      samples_per_epoch,
-                      nb_epoch,
-                      verbose=1,
-                      callbacks=None,
-                      validation_data=None,   **
-                      nb_val_samples=None,    **
-                      class_weight=None,
-                      max_q_size=10,
-                      nb_worker=1,
-                      pickle_safe=False,
-                      initial_epoch=0)
-
-                  ** validation_data: this can be either
-                      - a generator for the validation data
-                      - a tuple (inputs, targets)
-                      - a tuple (inputs, targets, sample_weights).
-                     nb_val_samples: only relevant if validation_data is a     generator. number of samples to use from validation generator at the end of every epoch.
-
-"""
-
-
+  # ----------------------
   print("\nSaving model..")
-  #model.save(path_to_saved_models + model_filename)
-  print("Model Saved as ", path_to_saved_models + model_filename)
-
+  model.save(path_to_saved_models + model_filename_base + ext)
+  print("\nModel Saved as ", path_to_saved_models + model_filename_base + ext)
+  print()
   print(history)
-
+  print()
   # ------
+
   print(
   '''
     to test this model locally (in anaconda)
     at the command command line, type:
-  '''
-  )
-  print(' python drive.py ' + path_to_saved_models + model_filename)
+  ''')
+  print(' python drive.py ' + path_to_saved_models + model_filename_base + ext)
+  # print(' python drive.py ' + filepath)
   print(
   '''
      examples:
@@ -720,8 +676,8 @@ def main(_):
      python ../drive.py ./model_170417_1741_sample_training_data.h5
 
   python drive.py {path_to_saved_models}//model_{model_timestamp}_{SUBDIR}.h5
-  '''
-  )
+  ''')
+
   # (if using docker, see instructions in Udacity Lesson: "8 Running Your Network")
   # -----
 
